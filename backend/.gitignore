@@ -1,0 +1,42 @@
+# ================= UNKNOWN Project =================
+
+# Virtual environments
+backend/rag_test_env/
+backend/rag_env/
+rag_env/
+venv/
+.venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# HuggingFace cache
+.cache/
+.huggingface/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

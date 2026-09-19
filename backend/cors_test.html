@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>UNKNOWN CORS Test</title>
+</head>
+<body>
+
+    <h1>UNKNOWN API CORS Test</h1>
+
+    <button onclick="testCors()">
+        Test /query
+    </button>
+
+    <pre id="result">Waiting...</pre>
+
+    <script>
+        async function testCors() {
+            const result = document.getElementById("result");
+
+            result.textContent = "Sending request...";
+
+            try {
+                const response = await fetch(
+                    "http://127.0.0.1:8000/query",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            query: "What are the five stages of SAC-RAG?"
+                        })
+                    }
+                );
+
+                const data = await response.json();
+
+                result.textContent =
+                    "HTTP Status: " + response.status + "\n\n" +
+                    JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                result.textContent =
+                    "CORS / REQUEST ERROR:\n" + error;
+            }
+        }
+    </script>
+
+</body>
+</html>
