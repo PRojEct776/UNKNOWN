@@ -64,7 +64,18 @@ def health_check():
 # ============================================================
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post(
+    "/query",
+    response_model=QueryResponse,
+    responses={
+        429: {
+            "description": "LLM provider quota or rate limit exceeded.",
+        },
+        500: {
+            "description": "Unexpected query processing failure.",
+        },
+    },
+)
 def query(request: QueryRequest):
     """Execute the complete UNKNOWN RAG pipeline."""
 
