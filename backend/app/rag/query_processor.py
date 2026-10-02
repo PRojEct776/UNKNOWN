@@ -10,10 +10,10 @@ import re
 
 from app.rag.embedder import embed_text
 
-
 # -------------------------------------------------------------------
 # Standalone lexical preprocessing functions (used by BM25 indexing/search)
 # -------------------------------------------------------------------
+
 
 def normalize_text(text: str) -> str:
     """
@@ -35,6 +35,7 @@ def tokenize_text(text: str) -> list[str]:
 # -------------------------------------------------------------------
 # Query Processor
 # -------------------------------------------------------------------
+
 
 class QueryProcessor:
     """

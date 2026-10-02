@@ -6,8 +6,8 @@ using weighted score fusion.
 """
 
 from app.rag.bm25_search import BM25Search
-from app.rag.faiss_search import FAISSSearch
 from app.rag.config import settings
+from app.rag.faiss_search import FAISSSearch
 from app.rag.logger import logger
 
 
@@ -30,8 +30,8 @@ class HybridSearch:
 
         # Hybrid fusion weights
         # (Adaptive weights will come later in Sprint 4)
-        self.alpha = 0.4   # BM25 weight
-        self.beta = 0.6    # FAISS weight
+        self.alpha = 0.4  # BM25 weight
+        self.beta = 0.6  # FAISS weight
 
     @staticmethod
     def normalize_scores(results, score_key="score"):
@@ -61,14 +61,13 @@ class HybridSearch:
             return results
 
         for result in results:
-            result["normalized_score"] = (
-                (result[score_key] - minimum)
-                / (maximum - minimum)
+            result["normalized_score"] = (result[score_key] - minimum) / (
+                maximum - minimum
             )
 
         return results
 
-    def search(self, query: str, top_k: int = None):
+    def search(self, query: str, top_k: int | None = None):
         """
         Perform hybrid retrieval.
 
@@ -124,8 +123,7 @@ class HybridSearch:
         for result in merged_results.values():
 
             hybrid_score = (
-                self.alpha * result["bm25_score"]
-                + self.beta * result["faiss_score"]
+                self.alpha * result["bm25_score"] + self.beta * result["faiss_score"]
             )
 
             result["hybrid_score"] = round(hybrid_score, 4)
@@ -133,10 +131,7 @@ class HybridSearch:
             hybrid_results.append(result)
 
         # Sort by hybrid score (highest first)
-        hybrid_results.sort(
-            key=lambda item: item["hybrid_score"],
-            reverse=True
-        )
+        hybrid_results.sort(key=lambda item: item["hybrid_score"], reverse=True)
 
         # Final top-k ranked results
         final_results = hybrid_results[:top_k]
@@ -160,7 +155,7 @@ if __name__ == "__main__":
         "semantic retrieval",
         "adaptive context compression",
         "reduce hallucinations in RAG",
-        "cloud virtualization"
+        "cloud virtualization",
     ]
 
     print("\n========== HYBRID SEARCH TEST ==========")

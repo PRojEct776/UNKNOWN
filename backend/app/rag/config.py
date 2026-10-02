@@ -1,75 +1,134 @@
 """
-Project UNKNOWN (AETHER)
-Global configuration module.
+UNKNOWN X v2.3 - Global Configuration Module
 
 Purpose:
     Centralized configuration for the Retrieval-Augmented Generation (RAG) engine.
-    Every module imports settings from this file instead of hardcoding values.
+    Every module imports `settings` from this file instead of hardcoding values.
+
+Features:
+    - Immutable project configuration.
+    - Automatic directory creation.
+    - Environment variable support (.env).
+    - Gemini API configuration.
 """
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+# ==========================================================
+# Load Environment Variables
+# ==========================================================
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+# Load backend/.env automatically.
+load_dotenv(BASE_DIR / ".env")
+
+
+# ==========================================================
+# Global Settings
+# ==========================================================
 
 
 @dataclass(frozen=True)
 class Settings:
-    """Immutable global configuration for Project UNKNOWN."""
+    """Immutable global configuration for UNKNOWN X."""
 
-    # ------------------------------------------------------------------
-    # Project Root (backend/)
-    # ------------------------------------------------------------------
-    BASE_DIR: Path = Path(__file__).resolve().parents[2]
+    # ------------------------------------------------------
+    # Project Root
+    # ------------------------------------------------------
+    BASE_DIR: Path = BASE_DIR
 
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------
     # Dataset Directories
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------
     DATASET_DIR: Path = BASE_DIR / "datasets"
     PAPERS_DIR: Path = DATASET_DIR / "papers"
     JSON_DIR: Path = DATASET_DIR / "json"
     CHUNK_DIR: Path = DATASET_DIR / "chunks"
 
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------
     # Storage Directories
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------
     VECTOR_DIR: Path = BASE_DIR / "vector_store"
     LOG_DIR: Path = BASE_DIR / "logs"
 
-    # ------------------------------------------------------------------
+    # Metadata / Cache Directories
+    METADATA_DIR: Path = BASE_DIR / "app" / "data" / "metadata"
+    CACHE_DIR: Path = BASE_DIR / "app" / "data" / "cache"
+
+    # ------------------------------------------------------
     # RAG Configuration
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 100
     TOP_K_RESULTS: int = 5
 
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------
     # Embedding Model
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
 
-    # ------------------------------------------------------------------
-    # Supported Input Files
-    # ------------------------------------------------------------------
-    SUPPORTED_EXTENSIONS: tuple[str, ...] = (".pdf", ".docx", ".txt")
+    # ------------------------------------------------------
+    # Gemini Configuration
+    # ------------------------------------------------------
+    GOOGLE_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
-    # ------------------------------------------------------------------
+    GEMINI_MODEL: str = os.getenv(
+        "MODEL_NAME",
+        "gemini-3.6-flash",
+    )
+
+    # Provider timeout (milliseconds)
+    GEMINI_TIMEOUT_MS: int = int(os.getenv("GEMINI_TIMEOUT_MS", "120000"))
+
+    # LOW | MEDIUM | HIGH
+    GEMINI_THINKING_LEVEL: str = os.getenv(
+        "GEMINI_THINKING_LEVEL",
+        "LOW",
+    )
+
+    TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.2"))
+
+    MAX_OUTPUT_TOKENS: int = int(os.getenv("MAX_OUTPUT_TOKENS", "2048"))
+
+    # ------------------------------------------------------
+    # Supported Input Files
+    # ------------------------------------------------------
+    SUPPORTED_EXTENSIONS: tuple[str, ...] = (
+        ".pdf",
+        ".docx",
+        ".txt",
+    )
+
+    # ------------------------------------------------------
     # File Encoding
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------
     DEFAULT_ENCODING: str = "utf-8"
 
 
-# Global settings instance
+# ==========================================================
+# Global Settings Instance
+# ==========================================================
+
 settings = Settings()
 
 
-# ----------------------------------------------------------------------
-# Automatically create required project directories.
-# ----------------------------------------------------------------------
+# ==========================================================
+# Automatically Create Required Directories
+# ==========================================================
+
 REQUIRED_DIRECTORIES = [
     settings.PAPERS_DIR,
     settings.JSON_DIR,
     settings.CHUNK_DIR,
     settings.VECTOR_DIR,
     settings.LOG_DIR,
+    settings.METADATA_DIR,
+    settings.CACHE_DIR,
 ]
 
 for directory in REQUIRED_DIRECTORIES:

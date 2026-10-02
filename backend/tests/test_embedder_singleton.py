@@ -7,7 +7,7 @@ print("=" * 60)
 queries = [
     "What is virtualization?",
     "Explain cloud computing.",
-    "Difference between VM and Docker."
+    "Difference between VM and Docker.",
 ]
 
 for i, query in enumerate(queries, start=1):

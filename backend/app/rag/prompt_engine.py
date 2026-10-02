@@ -1,16 +1,22 @@
-"""
-UNKNOWN Project - Sprint 3
-Adaptive Prompt Engine
+from __future__ import annotations
 
-Detects query intent and builds Gemini prompts dynamically.
+"""
+UNKNOWN X v2.3 - Adaptive Prompt Engine
+
+Purpose:
+    Detect user query intent and generate an adaptive RAG prompt
+    for Gemini and future LLM providers.
 """
 
 import re
+from collections.abc import Mapping
 from enum import Enum
+from types import MappingProxyType
+from typing import ClassVar
 
 
 class QueryType(Enum):
-    """Supported query categories in UNKNOWN."""
+    """Supported query categories."""
 
     FACT = "fact"
     DEFINITION = "definition"
@@ -23,85 +29,58 @@ class QueryType(Enum):
 
 class PromptEngine:
     """
-    Adaptive Prompt Engine for UNKNOWN.
+    Adaptive Prompt Engine for UNKNOWN X.
 
     Responsibilities:
     - Detect query intent.
-    - Generate intent-specific Gemini prompts.
-    - Prevent hallucinations using retrieved context.
+    - Generate intent-specific prompts.
+    - Prevent hallucinations by restricting answers to retrieved context.
     """
 
-    _TYPE_INSTRUCTIONS = {
-        QueryType.FACT:
-            "Answer with the specific fact found in the context. "
-            "Be concise and avoid unnecessary explanation.",
-
-        QueryType.DEFINITION:
-            "Provide a clear academic definition using only "
-            "the retrieved context.",
-
-        QueryType.REASONING:
-            "Explain the reasoning step by step using evidence "
-            "from the retrieved context.",
-
-        QueryType.COMPARISON:
-            "Compare the concepts using similarities, differences, "
-            "advantages, and disadvantages. Use a table if appropriate.",
-
-        QueryType.CODE:
-            "Provide correct code only if the retrieved context "
-            "supports it. Do not invent APIs or libraries that are "
-            "not present in the context.",
-
-        QueryType.SUMMARY:
-            "Summarize the retrieved context into key points "
-            "with a short conclusion.",
-
-        QueryType.GENERAL:
-            "Answer naturally using the retrieved context."
-    }
-
-    def __init__(self):
-        pass
+    _TYPE_INSTRUCTIONS: ClassVar[Mapping[QueryType, str]] = MappingProxyType(
+        {
+            QueryType.FACT: (
+                "Answer with the specific fact found in the retrieved context. "
+                "Be concise and avoid unnecessary explanation."
+            ),
+            QueryType.DEFINITION: (
+                "Provide a clear academic definition using only the retrieved context."
+            ),
+            QueryType.REASONING: (
+                "Explain the reasoning step by step using evidence from the retrieved context."
+            ),
+            QueryType.COMPARISON: (
+                "Compare the concepts using similarities, differences, advantages, "
+                "and disadvantages. Use a table if appropriate."
+            ),
+            QueryType.CODE: (
+                "Provide correct code only if the retrieved context supports it. "
+                "Do not invent APIs, functions, or libraries that are not present "
+                "in the retrieved context."
+            ),
+            QueryType.SUMMARY: (
+                "Summarize the retrieved context into key points followed by a short conclusion."
+            ),
+            QueryType.GENERAL: ("Answer naturally using only the retrieved context."),
+        }
+    )
 
     @staticmethod
     def _contains_word(query: str, word: str) -> bool:
-        """
-        Check whether a complete word exists in the query.
-
-        Used for normal alphabetic words to prevent substring
-        matching such as 'create' matching 'created'.
-        """
-
-        return re.search(
-            rf"\b{re.escape(word)}\b",
-            query
-        ) is not None
+        """Check whether a complete word exists in the query."""
+        return re.search(rf"\b{re.escape(word)}\b", query) is not None
 
     @staticmethod
     def _contains_language(query: str, language: str) -> bool:
-        """
-        Check for a programming language name.
-
-        Punctuation-based language names such as C++ and C#
-        cannot be handled reliably with simple \\b boundaries,
-        so they use substring matching.
-        """
-
-        if language in ["c++", "c#"]:
+        """Check for programming language names."""
+        if language in {"c++", "c#"}:
             return language in query
 
         return PromptEngine._contains_word(query, language)
 
     def detect_query_type(self, query: str) -> QueryType:
         """
-        Detect the user's query intent using lightweight rules.
-
-        Args:
-            query (str): User's question.
-
-        Returns:
-            QueryType: Detected query category.
+        Detect query intent using lightweight rules.
         """
 
         query = query.lower().strip()
@@ -109,29 +88,19 @@ class PromptEngine:
         # -------- Summary --------
         if any(
             self._contains_word(query, word)
-            for word in [
-                "summarize",
-                "summary",
-                "brief",
-                "overview"
-            ]
+            for word in ("summarize", "summary", "brief", "overview")
         ):
             return QueryType.SUMMARY
 
         # -------- Comparison --------
         if any(
             self._contains_word(query, word)
-            for word in [
-                "difference",
-                "compare",
-                "vs",
-                "versus"
-            ]
+            for word in ("difference", "compare", "vs", "versus")
         ):
             return QueryType.COMPARISON
 
         # -------- Direct Code Requests --------
-        direct_code_phrases = [
+        direct_code_phrases = (
             "write code",
             "write a program",
             "write a function",
@@ -146,14 +115,14 @@ class PromptEngine:
             "implement a function",
             "develop code",
             "develop a program",
-            "develop a function"
-        ]
+            "develop a function",
+        )
 
         if any(phrase in query for phrase in direct_code_phrases):
             return QueryType.CODE
 
         # -------- Programming Language + Code Action --------
-        programming_languages = [
+        programming_languages = (
             "python",
             "java",
             "c++",
@@ -161,21 +130,20 @@ class PromptEngine:
             "typescript",
             "c#",
             "go",
-            "rust"
-        ]
+            "rust",
+        )
 
-        code_actions = [
+        code_actions = (
             "write",
             "create",
             "build",
             "develop",
             "implement",
-            "generate"
-        ]
+            "generate",
+        )
 
         has_code_action = any(
-            self._contains_word(query, action)
-            for action in code_actions
+            self._contains_word(query, action) for action in code_actions
         )
 
         has_programming_language = any(
@@ -187,42 +155,27 @@ class PromptEngine:
             return QueryType.CODE
 
         # -------- Reasoning --------
-        reasoning_phrases = [
+        reasoning_phrases = (
             "why",
             "how does",
             "how do",
             "how can",
             "explain why",
             "reason",
-            "cause"
-        ]
+            "cause",
+        )
 
-        if any(
-            phrase in query
-            for phrase in reasoning_phrases
-        ):
+        if any(phrase in query for phrase in reasoning_phrases):
             return QueryType.REASONING
 
         # -------- Definition --------
-        if any(
-            query.startswith(prefix)
-            for prefix in [
-                "what is",
-                "who is",
-                "define"
-            ]
-        ):
+        if any(query.startswith(prefix) for prefix in ("what is", "who is", "define")):
             return QueryType.DEFINITION
 
         # -------- Fact --------
         if any(
             query.startswith(prefix)
-            for prefix in [
-                "when",
-                "where",
-                "which",
-                "how many"
-            ]
+            for prefix in ("when", "where", "which", "how many")
         ):
             return QueryType.FACT
 
@@ -233,20 +186,10 @@ class PromptEngine:
         self,
         query: str,
         context: str,
-        query_type: QueryType = None
+        query_type: QueryType | None = None,
     ) -> str:
         """
-        Build a Gemini-ready adaptive prompt.
-
-        Args:
-            query (str): User's question.
-            context (str): Retrieved context from ContextBuilder.
-            query_type (QueryType, optional):
-                External query type. If not supplied, the engine
-                automatically detects it.
-
-        Returns:
-            str: Complete prompt ready for GeminiEngine.generate().
+        Build an adaptive RAG prompt for Gemini/OpenRouter/Groq/Cerebras.
         """
 
         if query_type is None:
@@ -254,7 +197,7 @@ class PromptEngine:
 
         instruction = self._TYPE_INSTRUCTIONS[query_type]
 
-        prompt = f"""
+        return f"""
 You are UNKNOWN AI, an academic Retrieval-Augmented Generation assistant.
 
 Task Type: {query_type.value}
@@ -262,8 +205,7 @@ Task Type: {query_type.value}
 Instructions:
 - {instruction}
 - Answer ONLY using the retrieved context.
-- If the retrieved context does not contain enough information,
-  respond exactly with:
+- If the retrieved context does not contain enough information, respond exactly with:
   "The retrieved context does not contain enough information."
 - Do not use outside knowledge.
 - Do not fabricate facts or citations.
@@ -278,10 +220,10 @@ User Question:
 Answer:
 """.strip()
 
-        return prompt
 
-
-# ---------------------- TEST BLOCK ---------------------- #
+# ---------------------------------------------------------
+# Test Block
+# ---------------------------------------------------------
 
 if __name__ == "__main__":
 
@@ -297,15 +239,16 @@ if __name__ == "__main__":
         "Implement quicksort using C++.",
         "How do I implement a stack in C#?",
         "Summarize this IEEE paper.",
-        "Tell me about virtualization."
+        "Tell me about virtualization.",
     ]
 
-    print("\n========== UNKNOWN PROMPT ENGINE ==========")
+    print("=" * 55)
+    print("UNKNOWN X v2.3 - Prompt Engine Test")
+    print("=" * 55)
 
     for query in test_queries:
         query_type = engine.detect_query_type(query)
-
         print(f"\nQuery : {query}")
         print(f"Type  : {query_type.value}")
 
-    print("\n===========================================")
+    print("\nPrompt Engine tests completed successfully.")

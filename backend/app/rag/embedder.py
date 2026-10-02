@@ -43,10 +43,7 @@ def embed_text(text: str):
     """
     model = get_embedding_model()
 
-    return model.encode(
-        text,
-        normalize_embeddings=True
-    )
+    return model.encode(text, normalize_embeddings=True)
 
 
 def embed_texts(texts: list[str]):
@@ -62,10 +59,7 @@ def embed_texts(texts: list[str]):
     model = get_embedding_model()
 
     return model.encode(
-        texts,
-        normalize_embeddings=True,
-        batch_size=32,
-        show_progress_bar=False
+        texts, normalize_embeddings=True, batch_size=32, show_progress_bar=False
     )
 
 

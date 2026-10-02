@@ -1,10 +1,10 @@
-from app.rag.llm_engine import GeminiEngine
+from app.llm.gemini_provider import GeminiProvider
 
-engine = GeminiEngine()
+gemini = GeminiProvider()
 
 question = "Explain cloud computing in two lines."
 
-answer = engine.generate(question)
+response = gemini.generate(question)
 
 print("\nGemini Response:\n")
-print(answer)
+print(response.answer if response.success else response.error)

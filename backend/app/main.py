@@ -13,7 +13,6 @@ from app.api.schemas import QueryRequest, QueryResponse
 from app.rag.logger import logger
 from app.services.rag_service import RAGService
 
-
 # ============================================================
 # APPLICATION
 # ============================================================
@@ -48,6 +47,7 @@ rag_service = RAGService()
 # HEALTH CHECK
 # ============================================================
 
+
 @app.get("/health")
 def health_check():
     """Check whether the UNKNOWN API is running."""
@@ -63,6 +63,7 @@ def health_check():
 # QUERY ENDPOINT
 # ============================================================
 
+
 @app.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest):
     """Execute the complete UNKNOWN RAG pipeline."""
@@ -77,16 +78,12 @@ def query(request: QueryRequest):
             2,
         )
 
-        logger.info(
-            f"Request completed in {elapsed_ms} ms"
-        )
+        logger.info(f"Request completed in {elapsed_ms} ms")
 
         return response
 
-    except Exception as error:
-        logger.exception(
-            f"Query processing failed: {error}"
-        )
+    except Exception as error:  # noqa: BLE001
+        logger.exception(f"Query processing failed: {error}")
 
         raise HTTPException(
             status_code=500,

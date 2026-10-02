@@ -1,87 +1,93 @@
 """
-UNKNOWN Project - Sprint 3
-LLM Engine using Google Gemini
+UNKNOWN X v2.0 - Gemini LLM Engine (Production Stable)
 
-Handles:
-- Gemini client initialization
-- Environment configuration
-- Timeout protection
-- Retry mechanism
-- Logging
+Uses Google GenAI SDK with Chat API.
+Compatible with Gemini 3.6 Flash.
 """
 
-import os
 import time
-import logging
 
-from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-# Load environment variables
-load_dotenv()
-
-logger = logging.getLogger("UNKNOWN")
+from app.rag.config import settings
+from app.rag.logger import logger
 
 
 class GeminiEngine:
-    """Gemini LLM wrapper for UNKNOWN RAG pipeline."""
+    """Gemini wrapper for UNKNOWN X."""
 
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        model_name = os.getenv("MODEL_NAME", "gemini-2.5-flash")
+        if not settings.GEMINI_API_KEY:  # type: ignore
+            raise ValueError("GEMINI_API_KEY not found in backend/.env")
 
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in .env")
-
-        # Create one reusable Gemini client
+        # Create reusable Gemini client
         self.client = genai.Client(
-            api_key=api_key,
-            http_options=types.HttpOptions(timeout=30000)  # 30 seconds
+            api_key=settings.GEMINI_API_KEY,  # type: ignore
+            http_options=types.HttpOptions(timeout=60000),  # 60 seconds
         )
 
-        self.model_name = model_name
+        self.model_name = settings.GEMINI_MODEL
 
-        logger.info(f"Gemini Engine initialized with model: {model_name}")
+        logger.info(f"Gemini Engine initialized with model: {self.model_name}")
 
-    def generate(self, prompt: str, retries: int = 2) -> str:
+    def generate(
+        self,
+        prompt: str,
+        retries: int = 4,
+    ) -> str:
         """
-        Generate response from Gemini.
-
-        Args:
-            prompt (str): Prompt sent to Gemini.
-            retries (int): Number of retry attempts for transient failures.
-
-        Returns:
-            str: Gemini-generated response or fallback message.
+        Generate response using Gemini Chat API.
         """
-
-        temperature = float(os.getenv("TEMPERATURE", 0.2))
-        max_tokens = int(os.getenv("MAX_OUTPUT_TOKENS", 2048))
 
         for attempt in range(1, retries + 1):
+
             try:
-                response = self.client.models.generate_content(
+                chat = self.client.chats.create(
                     model=self.model_name,
-                    contents=prompt,
                     config=types.GenerateContentConfig(
-                        temperature=temperature,
-                        max_output_tokens=max_tokens,
+                        temperature=settings.TEMPERATURE,
+                        max_output_tokens=settings.MAX_OUTPUT_TOKENS,
                     ),
                 )
 
+                response = chat.send_message(prompt)
+
+                if response is None:
+                    raise ValueError("Gemini returned None.")
+
+                if not getattr(response, "text", None):
+                    raise ValueError("Gemini returned empty response.")
+
                 logger.info("Gemini response generated successfully.")
+
+                assert response.text is not None
                 return response.text.strip()
 
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001
+
+                error_text = str(error)
+
                 logger.warning(
-                    f"Gemini attempt {attempt}/{retries} failed: {error}"
+                    f"Gemini attempt {attempt}/{retries} failed: {error_text}"
                 )
 
-                # Retry only if attempts remain
-                if attempt < retries:
-                    time.sleep(2)
-                else:
-                    logger.error("Gemini failed after all retry attempts.")
+                # Stop immediately on quota errors.
+                if (
+                    "RESOURCE_EXHAUSTED" in error_text
+                    or "429" in error_text
+                    or "PerDay" in error_text
+                ):
+                    logger.error("Gemini daily quota exhausted.")
+                    return (
+                        "Gemini API quota exhausted. "
+                        "Please generate a new API key or wait for quota reset."
+                    )
 
-        return "Unable to generate a response at the moment. Please try again."
+                # Retry only for temporary errors.
+                if attempt < retries:
+                    time.sleep(min(2 ** (attempt - 1), 8))
+
+        logger.error("Gemini failed after all retry attempts.")
+
+        return "Unable to generate a response at the moment. " "Please try again."

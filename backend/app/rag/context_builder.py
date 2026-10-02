@@ -5,8 +5,6 @@ Context Builder (Final Version)
 Builds Gemini-ready context from Hybrid Search results.
 """
 
-from typing import List, Dict
-
 
 class ContextBuilder:
     """Formats retrieved chunks into structured context for Gemini."""
@@ -15,7 +13,7 @@ class ContextBuilder:
         self.max_chunks = max_chunks
         self.max_chars = max_chars
 
-    def build(self, search_results: List[Dict]) -> str:
+    def build(self, search_results: list[dict]) -> str:
         """
         Convert HybridSearch.search() output into Gemini context.
 

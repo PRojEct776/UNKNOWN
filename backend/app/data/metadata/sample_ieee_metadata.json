@@ -1,0 +1,36 @@
+{
+    "document": "sample_ieee.pdf",
+    "title": "sample_ieee",
+    "document_type": "pdf",
+    "document_hash": "4595e219f668a8a2a1e69d04c9689b99311df7fa3155fd618218602553ce87ac",
+    "pages": 13,
+    "chunks": 22,
+    "text_length": 7359,
+    "estimated_read_time": 36.8,
+    "embedding_status": true,
+    "ocr_required": false,
+    "ocr_quality": 1.0,
+    "metadata_completeness": 1.0,
+    "document_iq": {
+        "document": "sample_ieee.pdf",
+        "title": "sample_ieee",
+        "iq_score": 96.92,
+        "grade": "A+",
+        "health": "Excellent",
+        "metrics": {
+            "extraction_score": 25.0,
+            "chunk_score": 16.92,
+            "embedding_score": 20,
+            "ocr_score": 20,
+            "metadata_score": 15.0
+        },
+        "pipeline": {
+            "pages": 13,
+            "chunks": 22,
+            "text_length": 7359,
+            "chunk_density": 1.69,
+            "embedding_status": true,
+            "metadata_completeness": 1.0
+        }
+    }
+}
