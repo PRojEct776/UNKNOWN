@@ -72,20 +72,34 @@ def query(request: QueryRequest):
 
     try:
         response = rag_service.query(request.query)
-
-        elapsed_ms = round(
-            (time.perf_counter() - start_time) * 1000,
-            2,
-        )
-
-        logger.info(f"Request completed in {elapsed_ms} ms")
-
-        return response
-
-    except Exception as error:  # noqa: BLE001
+    except RuntimeError as error:
         logger.exception(f"Query processing failed: {error}")
+
+        error_message = str(error)
+
+        if "429" in error_message or "RESOURCE_EXHAUSTED" in error_message:
+            raise HTTPException(
+                status_code=429,
+                detail="LLM provider quota or rate limit exceeded. Please try again later.",
+            )
 
         raise HTTPException(
             status_code=500,
             detail="Unable to process the query at the moment.",
         )
+    except Exception as error:  # noqa: BLE001
+        logger.exception(f"Unexpected query processing failure: {error}")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process the query at the moment.",
+        )
+
+    elapsed_ms = round(
+        (time.perf_counter() - start_time) * 1000,
+        2,
+    )
+
+    logger.info(f"Request completed in {elapsed_ms} ms")
+
+    return response
