@@ -4,8 +4,6 @@ UNKNOWN Project - FastAPI Schemas
 Defines request and response models for the UNKNOWN API.
 """
 
-from typing import List
-
 from pydantic import BaseModel, Field
 
 
@@ -16,7 +14,7 @@ class QueryRequest(BaseModel):
         ...,
         min_length=1,
         max_length=1000,
-        description="User's natural-language question."
+        description="User's natural-language question.",
     )
 
 
@@ -38,4 +36,4 @@ class QueryResponse(BaseModel):
     query: str
     query_type: str
     answer: str
-    sources: List[Source]
+    sources: list[Source]

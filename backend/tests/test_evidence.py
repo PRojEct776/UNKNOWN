@@ -5,13 +5,12 @@ Evidence Trail Integration Test
 Uses the REAL HybridSearch pipeline.
 """
 
-from app.rag.hybrid_search import HybridSearch
 from app.rag.evidence import (
     build_evidence,
-    format_citations,
     evidence_markdown,
+    format_citations,
 )
-
+from app.rag.hybrid_search import HybridSearch
 
 QUERY = "What is Retrieval Augmented Generation?"
 

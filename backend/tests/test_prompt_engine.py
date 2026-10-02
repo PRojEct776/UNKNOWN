@@ -10,7 +10,6 @@ Tests:
 
 from app.rag.prompt_engine import PromptEngine, QueryType
 
-
 engine = PromptEngine()
 
 
@@ -28,7 +27,6 @@ test_cases = [
     ("What is Python?", QueryType.DEFINITION),
     ("Summarize this IEEE paper.", QueryType.SUMMARY),
     ("Tell me about virtualization.", QueryType.GENERAL),
-
     # Programming-language edge cases
     ("When was Java created?", QueryType.FACT),
     ("When was JavaScript created?", QueryType.FACT),
@@ -79,10 +77,7 @@ physical hardware.
 
 query = "What is virtualization?"
 
-prompt = engine.build_prompt(
-    query=query,
-    context=sample_context
-)
+prompt = engine.build_prompt(query=query, context=sample_context)
 
 print("\nGenerated Prompt Preview:")
 print("-" * 70)
@@ -94,10 +89,7 @@ print("-" * 70)
 assert "UNKNOWN AI" in prompt
 assert "Task Type: definition" in prompt
 assert "Answer ONLY using the retrieved context." in prompt
-assert (
-    "The retrieved context does not contain enough information."
-    in prompt
-)
+assert "The retrieved context does not contain enough information." in prompt
 assert sample_context.strip() in prompt
 assert query in prompt
 

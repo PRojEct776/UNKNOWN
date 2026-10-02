@@ -6,8 +6,9 @@ semantically similar document chunks for a user query.
 """
 
 import json
-import numpy as np
+
 import faiss
+import numpy as np
 
 from app.rag.config import settings
 from app.rag.embedder import embed_text
@@ -33,7 +34,7 @@ class FAISSSearch:
 
         logger.info(f"Loaded FAISS index with {self.index.ntotal} vectors.")
 
-    def search(self, query: str, top_k: int = None):
+    def search(self, query: str, top_k: int | None = None):
         """
         Perform semantic similarity search.
 
@@ -49,11 +50,7 @@ class FAISSSearch:
             top_k = settings.TOP_K_RESULTS
 
         # Embed query (force float32 for FAISS compatibility)
-        query_embedding = (
-            embed_text(query)
-            .reshape(1, -1)
-            .astype(np.float32)
-        )
+        query_embedding = embed_text(query).reshape(1, -1).astype(np.float32)  # type: ignore
 
         similarities, indices = self.index.search(query_embedding, top_k)
 
@@ -68,14 +65,16 @@ class FAISSSearch:
 
             chunk = self.metadata[idx]
 
-            results.append({
-                "rank": rank,
-                "score": round(float(score), 4),
-                "chunk_id": chunk["chunk_id"],
-                "document": chunk["document"],
-                "page": chunk["page"],
-                "text": chunk["text"],
-            })
+            results.append(
+                {
+                    "rank": rank,
+                    "score": round(float(score), 4),
+                    "chunk_id": chunk["chunk_id"],
+                    "document": chunk["document"],
+                    "page": chunk["page"],
+                    "text": chunk["text"],
+                }
+            )
 
         return results
 

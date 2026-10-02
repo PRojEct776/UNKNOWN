@@ -22,12 +22,10 @@ Canonical Retrieval Result Schema (HybridSearch.search):
 }
 """
 
-from typing import Dict, List
-
-
 # ------------------------------------------------------------------
 # Helper
 # ------------------------------------------------------------------
+
 
 def safe_score(value) -> float:
     """
@@ -44,7 +42,8 @@ def safe_score(value) -> float:
 # Evidence Builder
 # ------------------------------------------------------------------
 
-def build_evidence(results: List[Dict]) -> List[Dict]:
+
+def build_evidence(results: list[dict]) -> list[dict]:
     """
     Convert HybridSearch results into standardized evidence objects.
 
@@ -58,24 +57,24 @@ def build_evidence(results: List[Dict]) -> List[Dict]:
     evidence = []
 
     for index, result in enumerate(results, start=1):
-        evidence.append({
-            # Retrieval metadata
-            "rank": int(result.get("rank", index)),
-            "document": str(result.get("document", "Unknown Document")),
-            "page": int(result.get("page", 0)),
-            "chunk_id": str(result.get("chunk_id", "unknown")),
-
-            # Scores
-            "raw_score": safe_score(result.get("score")),
-            "normalized_score": safe_score(result.get("normalized_score")),
-            "score": safe_score(result.get("hybrid_score")),
-            "hybrid_score": safe_score(result.get("hybrid_score")),
-            "bm25_score": safe_score(result.get("bm25_score")),
-            "faiss_score": safe_score(result.get("faiss_score")),
-
-            # Supporting text
-            "snippet": str(result.get("text", "")).strip()[:350]
-        })
+        evidence.append(
+            {
+                # Retrieval metadata
+                "rank": int(result.get("rank", index)),
+                "document": str(result.get("document", "Unknown Document")),
+                "page": int(result.get("page", 0)),
+                "chunk_id": str(result.get("chunk_id", "unknown")),
+                # Scores
+                "raw_score": safe_score(result.get("score")),
+                "normalized_score": safe_score(result.get("normalized_score")),
+                "score": safe_score(result.get("hybrid_score")),
+                "hybrid_score": safe_score(result.get("hybrid_score")),
+                "bm25_score": safe_score(result.get("bm25_score")),
+                "faiss_score": safe_score(result.get("faiss_score")),
+                # Supporting text
+                "snippet": str(result.get("text", "")).strip()[:350],
+            }
+        )
 
     return evidence
 
@@ -84,7 +83,8 @@ def build_evidence(results: List[Dict]) -> List[Dict]:
 # Citation Formatter
 # ------------------------------------------------------------------
 
-def format_citations(evidence: List[Dict]) -> List[str]:
+
+def format_citations(evidence: list[dict]) -> list[str]:
     """
     Create human-readable citations for API/Streamlit UI.
     """
@@ -104,7 +104,8 @@ def format_citations(evidence: List[Dict]) -> List[str]:
 # Markdown Evidence Trail
 # ------------------------------------------------------------------
 
-def evidence_markdown(evidence: List[Dict]) -> str:
+
+def evidence_markdown(evidence: list[dict]) -> str:
     """
     Markdown evidence section for Gemini prompts.
     """
@@ -129,13 +130,10 @@ def evidence_markdown(evidence: List[Dict]) -> str:
 # Utility (Future UI / API)
 # ------------------------------------------------------------------
 
-def get_top_evidence(evidence: List[Dict], top_n: int = 3) -> List[Dict]:
+
+def get_top_evidence(evidence: list[dict], top_n: int = 3) -> list[dict]:
     """
     Return the highest-ranked evidence objects.
     """
 
-    return sorted(
-        evidence,
-        key=lambda x: x["score"],
-        reverse=True
-    )[:top_n]
+    return sorted(evidence, key=lambda x: x["score"], reverse=True)[:top_n]

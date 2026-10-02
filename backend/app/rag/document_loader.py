@@ -12,12 +12,17 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Dict, List
 
-from pypdf import PdfReader
 from docx import Document as DocxDocument
+from pypdf import PdfReader
 
 from app.rag.config import settings
+from app.rag.exceptions import (
+    DocumentExtractionError,
+    DocumentNotFoundError,
+    EmptyDocumentError,
+    UnsupportedDocumentError,
+)
 from app.rag.logger import logger
 from app.rag.utils import (
     clean_text,
@@ -27,12 +32,6 @@ from app.rag.utils import (
     is_supported_document,
     list_supported_documents,
 )
-from app.rag.exceptions import (
-    DocumentNotFoundError,
-    UnsupportedDocumentError,
-    EmptyDocumentError,
-    DocumentExtractionError,
-)
 
 
 class DocumentLoader:
@@ -41,7 +40,7 @@ class DocumentLoader:
     # ----------------------------------------------------------
     # PDF Loader
     # ----------------------------------------------------------
-    def _load_pdf(self, file_path: Path) -> List[Dict]:
+    def _load_pdf(self, file_path: Path) -> list[dict]:
         reader = PdfReader(file_path)
         pages = []
 
@@ -49,54 +48,58 @@ class DocumentLoader:
             raw_text = page.extract_text() or ""
             text = clean_text(raw_text)
 
-            pages.append({
-                "page_number": page_number,
-                "word_count": count_words(text),
-                "reading_time_minutes": estimate_read_time(text),
-                "page_hash": generate_hash(text),
-                "text": text,
-            })
+            pages.append(
+                {
+                    "page_number": page_number,
+                    "word_count": count_words(text),
+                    "reading_time_minutes": estimate_read_time(text),
+                    "page_hash": generate_hash(text),
+                    "text": text,
+                }
+            )
 
         return pages
 
     # ----------------------------------------------------------
     # DOCX Loader
     # ----------------------------------------------------------
-    def _load_docx(self, file_path: Path) -> List[Dict]:
-        document = DocxDocument(file_path)
+    def _load_docx(self, file_path: Path) -> list[dict]:
+        document = DocxDocument(file_path)  # type: ignore
 
         text = clean_text(
             "\n".join(paragraph.text for paragraph in document.paragraphs)
         )
 
-        return [{
-            "page_number": 1,
-            "word_count": count_words(text),
-            "reading_time_minutes": estimate_read_time(text),
-            "page_hash": generate_hash(text),
-            "text": text,
-        }]
+        return [
+            {
+                "page_number": 1,
+                "word_count": count_words(text),
+                "reading_time_minutes": estimate_read_time(text),
+                "page_hash": generate_hash(text),
+                "text": text,
+            }
+        ]
 
     # ----------------------------------------------------------
     # TXT Loader
     # ----------------------------------------------------------
-    def _load_txt(self, file_path: Path) -> List[Dict]:
-        text = clean_text(
-            file_path.read_text(encoding=settings.DEFAULT_ENCODING)
-        )
+    def _load_txt(self, file_path: Path) -> list[dict]:
+        text = clean_text(file_path.read_text(encoding=settings.DEFAULT_ENCODING))
 
-        return [{
-            "page_number": 1,
-            "word_count": count_words(text),
-            "reading_time_minutes": estimate_read_time(text),
-            "page_hash": generate_hash(text),
-            "text": text,
-        }]
+        return [
+            {
+                "page_number": 1,
+                "word_count": count_words(text),
+                "reading_time_minutes": estimate_read_time(text),
+                "page_hash": generate_hash(text),
+                "text": text,
+            }
+        ]
 
     # ----------------------------------------------------------
     # Universal Loader
     # ----------------------------------------------------------
-    def extract_document(self, file_path: Path) -> List[Dict]:
+    def extract_document(self, file_path: Path) -> list[dict]:
         """
         Extract pages and metadata from any supported document.
         """
@@ -137,14 +140,14 @@ class DocumentLoader:
         except EmptyDocumentError:
             raise
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.exception(f"Extraction failed: {file_path.name}")
             raise DocumentExtractionError(str(exc))
 
     # ----------------------------------------------------------
     # JSON Builder
     # ----------------------------------------------------------
-    def create_document_json(self, file_path: Path) -> Dict:
+    def create_document_json(self, file_path: Path) -> dict:
         pages = self.extract_document(file_path)
 
         full_text = " ".join(page["text"] for page in pages)
@@ -163,7 +166,7 @@ class DocumentLoader:
     # ----------------------------------------------------------
     # Save JSON
     # ----------------------------------------------------------
-    def save_document_json(self, document: Dict) -> Path:
+    def save_document_json(self, document: dict) -> Path:
         output_path = settings.JSON_DIR / f"{document['title']}.json"
 
         with open(

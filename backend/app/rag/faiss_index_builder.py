@@ -6,8 +6,9 @@ builds a FAISS vector index for semantic retrieval.
 """
 
 import json
-import numpy as np
+
 import faiss
+import numpy as np
 
 from app.rag.config import settings
 from app.rag.embedder import embed_texts

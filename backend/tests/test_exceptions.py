@@ -4,8 +4,8 @@ from app.rag.exceptions import (
     DocumentExtractionError,
     DocumentNotFoundError,
     EmptyDocumentError,
-    UnsupportedDocumentError,
     UnknownProjectError,
+    UnsupportedDocumentError,
 )
 
 

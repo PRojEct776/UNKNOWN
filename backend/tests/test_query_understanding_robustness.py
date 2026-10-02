@@ -15,38 +15,31 @@ def analyzer():
         ("WHAT IS SAC-RAG?", QueryType.DEFINITION),
         ("What is SAC-RAG!!!", QueryType.DEFINITION),
         ("WHY is hybrid retrieval useful?", QueryType.REASONING),
-
         # Definition variations
         ("Define FAISS.", QueryType.DEFINITION),
         ("What are embeddings?", QueryType.DEFINITION),
         ("What is the meaning of semantic search?", QueryType.DEFINITION),
-
         # Reasoning variations
         ("Why does BM25 help retrieval?", QueryType.REASONING),
         ("How does FAISS work?", QueryType.REASONING),
         ("How can hybrid retrieval improve search?", QueryType.REASONING),
-
         # Comparison variations
         ("BM25 vs FAISS", QueryType.COMPARISON),
         ("Compare BM25 and vector search.", QueryType.COMPARISON),
         ("What is the difference between BM25 and FAISS?", QueryType.COMPARISON),
-
         # Summary variations
         ("Summarize the retrieval pipeline.", QueryType.SUMMARY),
         ("Give me a summary of SAC-RAG.", QueryType.SUMMARY),
         ("What are the key points of the architecture?", QueryType.SUMMARY),
-
         # Fact variations
         ("When was FAISS created?", QueryType.FACT),
         ("Who created Python?", QueryType.FACT),
         ("What year was JavaScript introduced?", QueryType.FACT),
-
         # Code variations
         ("Write Python code for binary search.", QueryType.CODE),
         ("Implement a stack in Java.", QueryType.CODE),
         ("Create a C++ program for sorting.", QueryType.CODE),
         ("How do I implement a linked list in C#?", QueryType.CODE),
-
         # General queries
         ("Tell me about retrieval.", QueryType.GENERAL),
         ("I need information about semantic search.", QueryType.GENERAL),
@@ -97,9 +90,7 @@ def test_original_query_is_trimmed(analyzer):
 
 
 def test_code_request_with_history_word_is_still_code(analyzer):
-    result = analyzer.analyze(
-        "When writing Python, how do I implement binary search?"
-    )
+    result = analyzer.analyze("When writing Python, how do I implement binary search?")
 
     assert result.query_type == QueryType.CODE
 

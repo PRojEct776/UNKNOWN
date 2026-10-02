@@ -35,7 +35,7 @@ class BM25Search:
 
         logger.info(f"Loaded BM25 index with {len(self.chunks)} chunks.")
 
-    def search(self, query: str, top_k: int = None):
+    def search(self, query: str, top_k: int | None = None):
         """
         Perform BM25 search.
 
@@ -58,9 +58,7 @@ class BM25Search:
 
         # Sort chunks by score (highest first)
         ranked_indices = sorted(
-            range(len(scores)),
-            key=lambda i: scores[i],
-            reverse=True
+            range(len(scores)), key=lambda i: scores[i], reverse=True
         )
 
         results = []
@@ -101,7 +99,7 @@ if __name__ == "__main__":
         "semantic retrieval",
         "context compression",
         "retrieval augmented generation",
-        "cloud virtualization"  # Expected to return no results for this paper
+        "cloud virtualization",  # Expected to return no results for this paper
     ]
 
     print("\n========== BM25 SEARCH TEST ==========")

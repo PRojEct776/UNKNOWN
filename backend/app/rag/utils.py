@@ -95,6 +95,8 @@ def is_supported_document(file_path: Path) -> bool:
     """
 
     return file_path.suffix.lower() in settings.SUPPORTED_EXTENSIONS
+
+
 def list_supported_documents(folder: Path) -> list[Path]:
     """
     Return all supported documents inside a folder.

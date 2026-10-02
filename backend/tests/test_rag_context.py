@@ -1,5 +1,5 @@
-from app.rag.hybrid_search import HybridSearch
 from app.rag.context_builder import ContextBuilder
+from app.rag.hybrid_search import HybridSearch
 
 # Initialize components
 retriever = HybridSearch()

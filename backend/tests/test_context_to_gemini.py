@@ -16,11 +16,10 @@ Gemini
 Answer
 """
 
-from app.rag.hybrid_search import HybridSearch
 from app.rag.context_builder import ContextBuilder
+from app.rag.hybrid_search import HybridSearch
+from app.llm.gemini_provider import GeminiProvider
 from app.rag.prompt_engine import PromptEngine
-from app.rag.llm_engine import GeminiEngine
-
 
 # ============================================================
 # INITIALIZE MODULES
@@ -29,7 +28,7 @@ from app.rag.llm_engine import GeminiEngine
 retriever = HybridSearch()
 builder = ContextBuilder(max_chunks=5)
 prompt_engine = PromptEngine()
-gemini = GeminiEngine()
+gemini = GeminiProvider()
 
 
 # ============================================================
@@ -92,11 +91,7 @@ print(f"Detected Type: {query_type.value}")
 # STEP 4: ADAPTIVE PROMPT GENERATION
 # ============================================================
 
-prompt = prompt_engine.build_prompt(
-    query=query,
-    context=context,
-    query_type=query_type
-)
+prompt = prompt_engine.build_prompt(query=query, context=context, query_type=query_type)
 
 print("\n" + "=" * 70)
 print("PROMPT PREVIEW")
@@ -108,7 +103,8 @@ print(prompt[:1200] + "...")
 # STEP 5: GEMINI GENERATION
 # ============================================================
 
-answer = gemini.generate(prompt)
+response = gemini.generate(prompt)
+answer = response.answer if response.success else response.error
 
 print("\n" + "=" * 70)
 print("GEMINI ANSWER")
