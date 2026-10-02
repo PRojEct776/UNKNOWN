@@ -14,6 +14,7 @@ Query
 """
 
 from app.api.schemas import QueryResponse, Source
+from app.llm.gemini_provider import GeminiProvider
 from app.query.query_understanding import (
     QueryType as BhagyaQueryType,
 )
@@ -23,7 +24,6 @@ from app.query.query_understanding import (
 from app.rag.context_builder import ContextBuilder
 from app.rag.evidence import build_evidence
 from app.rag.hybrid_search import HybridSearch
-from app.rag.llm_engine import GeminiEngine
 from app.rag.logger import logger
 from app.rag.prompt_engine import (
     PromptEngine,
@@ -48,7 +48,7 @@ class RAGService:
         self.retriever = HybridSearch()
         self.context_builder = ContextBuilder(max_chunks=5)
         self.prompt_engine = PromptEngine()
-        self.gemini = GeminiEngine()
+        self.gemini = GeminiProvider()
 
         logger.info("UNKNOWN X RAG Service initialized successfully.")
 
@@ -149,7 +149,12 @@ class RAGService:
         # 7. Gemini Generation
         # ==================================================
 
-        answer = self.gemini.generate(prompt)
+        response = self.gemini.generate(prompt)
+
+        if not response.success:
+            raise RuntimeError(response.error or "Gemini generation failed.")
+
+        answer = response.answer
 
         # ==================================================
         # 8. API Source Formatting

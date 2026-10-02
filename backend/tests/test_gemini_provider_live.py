@@ -56,14 +56,12 @@ def test_live_request(retries: int = 3, delay: int = 5) -> None:
             print("\n✅ Gemini live test passed.")
             return
 
-        print(f"\nError Type : {response.error_type.value}")  # type: ignore
+        assert response.error_kind is not None
+        print(f"\nError Type : {response.error_kind.value}")
         print(f"Error      : {response.error}")
 
         # Retry only temporary Gemini server failures.
-        if (
-            response.error_type == ErrorKind.TRANSIENT  # type: ignore
-            and attempt < retries
-        ):
+        if response.error_kind == ErrorKind.TRANSIENT and attempt < retries:
             wait = delay * (2 ** (attempt - 1))
             print(f"\nRetrying in {wait} seconds...\n")
             time.sleep(wait)
@@ -76,22 +74,23 @@ def test_live_request(retries: int = 3, delay: int = 5) -> None:
     print("\n" + "=" * 60)
     print("UNKNOWN X v3.1 - GEMINI LIVE TEST RESULT")
     print("=" * 60)
-    print(f"Final Error Type : {last_response.error_type.value}")  # type: ignore
+    assert last_response.error_kind is not None
+    print(f"Final Error Type : {last_response.error_kind.value}")
     print(f"Final Error      : {last_response.error}")
 
-    if last_response.error_type == ErrorKind.TRANSIENT:  # type: ignore
+    if last_response.error_kind == ErrorKind.TRANSIENT:
         print("\n⚠ Gemini servers are temporarily under high demand.")
         print("Backend is working correctly. Try again later.")
         return
 
-    if last_response.error_type == ErrorKind.RATE_LIMIT:  # type: ignore
+    if last_response.error_kind == ErrorKind.RATE_LIMIT:
         print("\n⚠ Gemini API quota exhausted.")
         return
 
-    if last_response.error_type == ErrorKind.INVALID_REQUEST:  # type: ignore
+    if last_response.error_kind == ErrorKind.INVALID_REQUEST:
         raise RuntimeError("Invalid Gemini request or API key.")
 
-    if last_response.error_type == ErrorKind.EMPTY:  # type: ignore
+    if last_response.error_kind == ErrorKind.EMPTY:
         raise RuntimeError("Gemini returned an empty response.")
 
     raise RuntimeError(last_response.error or "Gemini live test failed.")
