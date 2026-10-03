@@ -63,10 +63,9 @@ class CohereProvider(BaseProvider):
 
         # Cohere V2 returns content blocks.
         text = "".join(
-            block.text
+            block.text  # type: ignore
             for block in content
-            if getattr(block, "type", None) == "text"
-            and getattr(block, "text", None)
+            if getattr(block, "type", None) == "text" and getattr(block, "text", None)
         )
 
         if not text:

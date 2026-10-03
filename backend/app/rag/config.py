@@ -104,13 +104,18 @@ class Settings:
 
     LLM_TIMEOUT_S: float = float(os.getenv("LLM_TIMEOUT_S", "10.0"))
 
+    CORS_ORIGINS: str = os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:5173",
+    )
+
     # ------------------------------------------------------
     # Groq Configuration
     # ------------------------------------------------------
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str = os.getenv(
         "GROQ_MODEL",
-        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
     )
 
     # ------------------------------------------------------
@@ -128,7 +133,7 @@ class Settings:
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_MODEL: str = os.getenv(
         "OPENROUTER_MODEL",
-        "",
+        "openrouter/free",
     )
     # ------------------------------------------------------
     # Supported Input Files
@@ -144,13 +149,43 @@ class Settings:
     # ------------------------------------------------------
     DEFAULT_ENCODING: str = "utf-8"
 
+    def validate(self) -> None:
+        """Validate configuration values that affect runtime behavior."""
+
+        if not 0.0 <= self.TEMPERATURE <= 2.0:
+            raise ValueError("TEMPERATURE must be between 0.0 and 2.0.")
+
+        if self.MAX_OUTPUT_TOKENS <= 0:
+            raise ValueError("MAX_OUTPUT_TOKENS must be greater than 0.")
+
+        if self.GEMINI_TIMEOUT_MS <= 0:
+            raise ValueError("GEMINI_TIMEOUT_MS must be greater than 0.")
+
+        if self.LLM_TIMEOUT_S <= 0:
+            raise ValueError("LLM_TIMEOUT_S must be greater than 0.")
+
+        providers = {
+            provider.strip().lower()
+            for provider in self.LLM_PROVIDER_ORDER.split(",")
+            if provider.strip()
+        }
+
+        supported = {"gemini", "groq", "cohere", "openrouter"}
+
+        unknown = providers - supported
+        if unknown:
+            raise ValueError(f"Unsupported LLM providers configured: {sorted(unknown)}")
+
+        if not providers:
+            raise ValueError("LLM_PROVIDER_ORDER must contain at least one provider.")
+
 
 # ==========================================================
 # Global Settings Instance
 # ==========================================================
 
 settings = Settings()
-
+settings.validate()
 
 # ==========================================================
 # Automatically Create Required Directories

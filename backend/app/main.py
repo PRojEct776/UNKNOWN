@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.schemas import QueryRequest, QueryResponse
+from app.rag.config import settings
 from app.rag.logger import logger
 from app.services.rag_service import RAGService
 
@@ -30,7 +31,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        origin.strip()
+        for origin in settings.CORS_ORIGINS.split(",")  # type: ignore
+        if origin.strip()
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -68,8 +73,17 @@ def health_check():
     "/query",
     response_model=QueryResponse,
     responses={
+        400: {
+            "description": "The LLM provider rejected the request.",
+        },
         429: {
             "description": "LLM provider quota or rate limit exceeded.",
+        },
+        502: {
+            "description": "The configured LLM provider rejected the request or all providers failed.",
+        },
+        503: {
+            "description": "LLM providers are temporarily unavailable.",
         },
         500: {
             "description": "Unexpected query processing failure.",
@@ -84,22 +98,40 @@ def query(request: QueryRequest):
     try:
         response = rag_service.query(request.query)
     except RuntimeError as error:
-        logger.exception(f"Query processing failed: {error}")
+        logger.exception("Query processing failed.")
 
-        error_message = str(error)
+        error_kind = getattr(error, "error_kind", None)
 
-        if "429" in error_message or "RESOURCE_EXHAUSTED" in error_message:
+        if error_kind == "rate_limit":
             raise HTTPException(
                 status_code=429,
                 detail="LLM provider quota or rate limit exceeded. Please try again later.",
             )
 
+        if error_kind == "transient":
+            raise HTTPException(
+                status_code=503,
+                detail="LLM providers are temporarily unavailable. Please try again later.",
+            )
+
+        if error_kind == "invalid_request":
+            raise HTTPException(
+                status_code=400,
+                detail="The LLM provider rejected the request.",
+            )
+
+        if error_kind == "fatal":
+            raise HTTPException(
+                status_code=502,
+                detail="The configured LLM provider rejected the request.",
+            )
+
         raise HTTPException(
-            status_code=500,
-            detail="Unable to process the query at the moment.",
+            status_code=502,
+            detail="LLM providers were unable to process the query.",
         )
-    except Exception as error:  # noqa: BLE001
-        logger.exception(f"Unexpected query processing failure: {error}")
+    except Exception as error:  # noqa: BLE001, F841
+        logger.exception("Unexpected query processing failure.")
 
         raise HTTPException(
             status_code=500,

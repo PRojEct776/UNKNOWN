@@ -152,7 +152,11 @@ class RAGService:
         response = self.llm.generate(prompt)
 
         if not response.success:
-            raise RuntimeError(response.error or "LLM generation failed.")
+            error = RuntimeError(response.error or "LLM generation failed.")
+            error.error_kind = (  # pyright: ignore[reportAttributeAccessIssue]
+                response.error_kind
+            )  # pyright: ignore[reportAttributeAccessIssue]
+            raise error
 
         answer = response.answer
 

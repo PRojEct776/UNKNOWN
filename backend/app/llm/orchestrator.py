@@ -78,7 +78,7 @@ class LLMOrchestrator:
                 continue
             try:
                 # One misconfigured provider must not stop the app from starting.
-                providers.append(factory())
+                providers.append(factory())  # type: ignore
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Provider %r disabled: %s", name, exc)
 
