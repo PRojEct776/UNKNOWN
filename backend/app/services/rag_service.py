@@ -13,7 +13,11 @@ Query
 → API Response
 """
 
-from app.api.schemas import QueryResponse, Source
+from app.api.schemas import (
+    ClaimVerificationResponse,
+    QueryResponse,
+    Source,
+)
 from app.llm.orchestrator import get_orchestrator
 from app.query.query_understanding import (
     QueryType as BhagyaQueryType,
@@ -21,6 +25,7 @@ from app.query.query_understanding import (
 from app.query.query_understanding import (
     QueryUnderstanding,
 )
+from app.rag.claim_verifier import ClaimVerifier
 from app.rag.context_builder import ContextBuilder
 from app.rag.evidence import build_evidence
 from app.rag.hybrid_search import HybridSearch
@@ -48,6 +53,7 @@ class RAGService:
         self.retriever = HybridSearch()
         self.context_builder = ContextBuilder(max_chunks=5)
         self.prompt_engine = PromptEngine()
+        self.claim_verifier = ClaimVerifier()
         self.llm = get_orchestrator()
 
         logger.info("UNKNOWN X RAG Service initialized successfully.")
@@ -187,5 +193,91 @@ class RAGService:
             query=normalized_query,
             query_type=query_type.value,
             answer=answer,
+            sources=sources,
+        )
+
+    def verify_claim(
+        self,
+        claim: str,
+    ) -> ClaimVerificationResponse:
+        """
+        Verify a user-provided claim against retrieved document evidence.
+        """
+
+        logger.info(f"Verifying claim: {claim}")
+
+        # ==================================================
+        # 1. Retrieve relevant evidence
+        # ==================================================
+
+        results = self.retriever.search(claim)
+
+        logger.info(f"Retrieved {len(results)} chunks for claim verification.")
+
+        # ==================================================
+        # 2. Build grounded context
+        # ==================================================
+
+        context = self.context_builder.build(results)
+
+        # ==================================================
+        # 3. Build verification prompt
+        # ==================================================
+
+        prompt = self.claim_verifier.build_verification_prompt(
+            claim=claim,
+            context=context,
+        )
+
+        # ==================================================
+        # 4. LLM analysis
+        # ==================================================
+
+        response = self.llm.generate(prompt)
+
+        if not response.success:
+            error = RuntimeError(response.error or "Claim verification failed.")
+
+            error.error_kind = (  # pyright: ignore[reportAttributeAccessIssue]
+                response.error_kind
+            )
+
+            raise error
+
+        # ==================================================
+        # 5. Parse structured verification result
+        # ==================================================
+
+        verification = self.claim_verifier.parse_response(
+            claim=claim,
+            response_text=response.answer,
+        )
+
+        # ==================================================
+        # 6. Format source information
+        # ==================================================
+
+        sources = [
+            Source(
+                rank=result.get("rank", 0),
+                document=result.get("document", "Unknown"),
+                page=result.get("page", "N/A"),
+                chunk_id=result.get("chunk_id", "N/A"),
+                hybrid_score=float(result.get("hybrid_score", 0.0)),
+                bm25_score=float(result.get("bm25_score", 0.0)),
+                faiss_score=float(result.get("faiss_score", 0.0)),
+            )
+            for result in results
+        ]
+
+        logger.info(f"Claim verification completed: " f"{verification.verdict.value}")
+
+        return ClaimVerificationResponse(
+            claim=verification.claim,
+            verdict=verification.verdict.value,
+            confidence=verification.confidence,
+            explanation=verification.explanation,
+            evidence=verification.evidence,
+            source_chunk_ids=verification.source_chunk_ids,
             sources=sources,
         )

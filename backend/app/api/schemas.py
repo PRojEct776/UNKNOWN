@@ -37,3 +37,24 @@ class QueryResponse(BaseModel):
     query_type: str
     answer: str
     sources: list[Source]
+class ClaimVerificationRequest(BaseModel):
+    """Incoming claim verification request."""
+
+    claim: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Claim to verify against the indexed documents.",
+    )
+
+
+class ClaimVerificationResponse(BaseModel):
+    """Claim verification API response."""
+
+    claim: str
+    verdict: str
+    confidence: float
+    explanation: str
+    evidence: list[str]
+    source_chunk_ids: list[str]
+    sources: list[Source]
