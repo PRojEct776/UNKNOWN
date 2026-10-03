@@ -169,7 +169,16 @@ class PromptEngine:
             return QueryType.REASONING
 
         # -------- Definition --------
-        if any(query.startswith(prefix) for prefix in ("what is", "who is", "define")):
+        if any(
+            query.startswith(prefix)
+            for prefix in ("what is", "who is", "who are", "define")
+        ):
+            return QueryType.DEFINITION
+
+        if query.startswith("what are") and any(
+            term in query
+            for term in ("types", "categories", "kinds", "classes")
+        ):
             return QueryType.DEFINITION
 
         # -------- Fact --------
