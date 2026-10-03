@@ -27,6 +27,7 @@ from app.query.query_understanding import (
 )
 from app.rag.claim_verifier import ClaimVerifier
 from app.rag.context_builder import ContextBuilder
+from app.rag.contradiction_finder import ContradictionFinder
 from app.rag.evidence import build_evidence
 from app.rag.hybrid_search import HybridSearch
 from app.rag.logger import logger
@@ -54,6 +55,7 @@ class RAGService:
         self.context_builder = ContextBuilder(max_chunks=5)
         self.prompt_engine = PromptEngine()
         self.claim_verifier = ClaimVerifier()
+        self.contradiction_finder = ContradictionFinder()
         self.llm = get_orchestrator()
 
         logger.info("UNKNOWN X RAG Service initialized successfully.")
@@ -281,3 +283,75 @@ class RAGService:
             source_chunk_ids=verification.source_chunk_ids,
             sources=sources,
         )
+
+    def find_contradictions(
+        self,
+        query: str,
+    ):
+        """
+        Detect contradictions across retrieved document evidence.
+        """
+
+        logger.info(f"Running contradiction analysis: {query}")
+
+        # ==================================================
+        # 1. Retrieve relevant evidence
+        # ==================================================
+
+        results = self.retriever.search(query)
+
+        logger.info(f"Retrieved {len(results)} chunks for contradiction analysis.")
+
+        # ==================================================
+        # 2. Prepare evidence for contradiction analysis
+        # ==================================================
+
+        evidence = [
+            {
+                "document": result.get("document", "Unknown"),
+                "page": result.get("page", "N/A"),
+                "chunk_id": result.get("chunk_id", "N/A"),
+                "text": result.get("text", ""),
+            }
+            for result in results
+        ]
+
+        # ==================================================
+        # 3. Build contradiction prompt
+        # ==================================================
+
+        prompt = self.contradiction_finder.build_contradiction_prompt(
+            query=query,
+            evidence=evidence,
+        )
+
+        # ==================================================
+        # 4. LLM analysis
+        # ==================================================
+
+        response = self.llm.generate(prompt)
+
+        if not response.success:
+            error = RuntimeError(response.error or "Contradiction analysis failed.")
+
+            error.error_kind = (  # pyright: ignore[reportAttributeAccessIssue]
+                response.error_kind
+            )
+
+            raise error
+
+        # ==================================================
+        # 5. Parse structured contradiction result
+        # ==================================================
+
+        report = self.contradiction_finder.parse_response(
+            query=query,
+            response_text=response.answer,
+        )
+
+        logger.info(
+            f"Contradiction analysis completed: "
+            f"{report.contradictions_found} contradictions found."
+        )
+
+        return report

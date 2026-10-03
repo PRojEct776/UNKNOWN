@@ -37,6 +37,8 @@ class QueryResponse(BaseModel):
     query_type: str
     answer: str
     sources: list[Source]
+
+
 class ClaimVerificationRequest(BaseModel):
     """Incoming claim verification request."""
 
@@ -58,3 +60,43 @@ class ClaimVerificationResponse(BaseModel):
     evidence: list[str]
     source_chunk_ids: list[str]
     sources: list[Source]
+
+
+class ContradictionRequest(BaseModel):
+    """Incoming contradiction analysis request."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Question or topic to analyze for conflicting evidence.",
+    )
+
+
+class EvidenceClaimResponse(BaseModel):
+    """A claim extracted from retrieved document evidence."""
+
+    claim: str
+    evidence: str
+    document: str
+    page: int | str
+    chunk_id: str
+
+
+class ClaimRelationshipResponse(BaseModel):
+    """Relationship between two evidence-backed claims."""
+
+    claim_a: EvidenceClaimResponse
+    claim_b: EvidenceClaimResponse
+    relation: str
+    confidence: float
+    explanation: str
+
+
+class ContradictionResponse(BaseModel):
+    """Contradiction analysis API response."""
+
+    query: str
+    claims: list[EvidenceClaimResponse]
+    relationships: list[ClaimRelationshipResponse]
+    contradictions_found: int

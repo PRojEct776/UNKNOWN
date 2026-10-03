@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.schemas import (
     ClaimVerificationRequest,
     ClaimVerificationResponse,
+    ContradictionRequest,
+    ContradictionResponse,
     QueryRequest,
     QueryResponse,
 )
@@ -240,3 +242,71 @@ def verify_claim(request: ClaimVerificationRequest):
     logger.info(f"Claim verification request completed in {elapsed_ms} ms")
 
     return response
+
+
+@app.post(
+    "/contradictions",
+    response_model=ContradictionResponse,
+)
+def contradictions(request: ContradictionRequest):
+    """
+    Detect conflicting claims across retrieved document evidence.
+    """
+
+    start_time = time.perf_counter()
+
+    try:
+        report = rag_service.find_contradictions(request.query)
+
+        return ContradictionResponse(
+            query=report.query,
+            claims=[claim.model_dump() for claim in report.claims],
+            relationships=[
+                relationship.model_dump() for relationship in report.relationships
+            ],
+            contradictions_found=report.contradictions_found,
+        )
+
+    except Exception as error:
+        logger.exception("Contradiction analysis failed.")
+
+        error_kind = getattr(error, "error_kind", None)
+
+        if error_kind == "rate_limit":
+            raise HTTPException(
+                status_code=429,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "transient":
+            raise HTTPException(
+                status_code=503,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "invalid_request":
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "fatal":
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        if isinstance(error, ValueError):
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail="Contradiction analysis failed.",
+        ) from error
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(f"Contradiction endpoint completed in {elapsed_ms:.2f} ms.")
