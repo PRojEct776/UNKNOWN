@@ -94,7 +94,42 @@ class Settings:
     TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.2"))
 
     MAX_OUTPUT_TOKENS: int = int(os.getenv("MAX_OUTPUT_TOKENS", "2048"))
+    # ------------------------------------------------------
+    # Multi-LLM Provider Configuration
+    # ------------------------------------------------------
+    LLM_PROVIDER_ORDER: str = os.getenv(
+        "LLM_PROVIDER_ORDER",
+        "gemini,groq,cohere,openrouter",
+    )
 
+    LLM_TIMEOUT_S: float = float(os.getenv("LLM_TIMEOUT_S", "10.0"))
+
+    # ------------------------------------------------------
+    # Groq Configuration
+    # ------------------------------------------------------
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv(
+        "GROQ_MODEL",
+        "llama-3.3-70b-versatile",
+    )
+
+    # ------------------------------------------------------
+    # Cohere Configuration
+    # ------------------------------------------------------
+    COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+    COHERE_MODEL: str = os.getenv(
+        "COHERE_MODEL",
+        "command-a-03-2025",
+    )
+
+    # ------------------------------------------------------
+    # OpenRouter Configuration
+    # ------------------------------------------------------
+    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+    OPENROUTER_MODEL: str = os.getenv(
+        "OPENROUTER_MODEL",
+        "",
+    )
     # ------------------------------------------------------
     # Supported Input Files
     # ------------------------------------------------------

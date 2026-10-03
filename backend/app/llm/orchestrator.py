@@ -23,7 +23,7 @@ from time import monotonic, perf_counter
 from typing import Any
 
 from app.llm.base_provider import BaseProvider, ErrorKind, LLMResponse
-from app.llm.cerebras_provider import CerebrasProvider
+from app.llm.cohere_provider import CohereProvider
 from app.llm.gemini_provider import GeminiProvider
 from app.llm.groq_provider import GroqProvider
 from app.llm.health import HealthTracker
@@ -37,7 +37,7 @@ DEFAULT_TOTAL_TIMEOUT_S = 25.0
 _REGISTRY: dict[str, type[BaseProvider]] = {
     "gemini": GeminiProvider,
     "groq": GroqProvider,
-    "cerebras": CerebrasProvider,
+    "cohere": CohereProvider,
     "openrouter": OpenRouterProvider,
 }
 
