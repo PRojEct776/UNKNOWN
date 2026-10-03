@@ -1,16 +1,22 @@
 """
-UNKNOWN X v2.0 - RAG Service
+UNKNOWN X v2.3+ - RAG Service
 
 Production application service connecting:
+
 Query
 → Query Understanding
 → Hybrid Retrieval
 → Evidence Trail
 → Context Builder
 → Prompt Engine
-→ Gemini
+→ Multi-LLM Orchestrator
 → Document IQ
 → API Response
+
+Additional capabilities:
+→ Claim Verification
+→ Contradiction Finder
+→ Research Comparison
 """
 
 from app.api.schemas import (
@@ -37,6 +43,7 @@ from app.rag.prompt_engine import (
 from app.rag.prompt_engine import (
     QueryType as PromptQueryType,
 )
+from app.rag.research_comparison import ResearchComparisonEngine
 from app.rag.scoring import calculate_document_iq
 from app.services.document_service import (
     build_document_metadata,
@@ -50,28 +57,146 @@ class RAGService:
     def __init__(self):
         logger.info("Initializing UNKNOWN X RAG Service...")
 
+        # ==================================================
+        # CORE RAG COMPONENTS
+        # ==================================================
+
         self.query_understanding = QueryUnderstanding()
+
         self.retriever = HybridSearch()
+
         self.context_builder = ContextBuilder(max_chunks=5)
+
         self.prompt_engine = PromptEngine()
+
+        # ==================================================
+        # UNIQUE UNKNOWN FEATURES
+        # ==================================================
+
         self.claim_verifier = ClaimVerifier()
+
         self.contradiction_finder = ContradictionFinder()
+
+        self.research_comparison = ResearchComparisonEngine()
+
+        # ==================================================
+        # MULTI-LLM ORCHESTRATOR
+        # ==================================================
+
         self.llm = get_orchestrator()
 
         logger.info("UNKNOWN X RAG Service initialized successfully.")
+
+    # ======================================================
+    # QUERY TYPE MAPPING
+    # ======================================================
 
     @staticmethod
     def _map_query_type(
         query_type: BhagyaQueryType,
     ) -> PromptQueryType:
-        """Convert Bhagya QueryType into PromptEngine QueryType."""
+        """
+        Convert Query Understanding QueryType
+        into PromptEngine QueryType.
+        """
 
         try:
             return PromptQueryType[query_type.name]
+
         except KeyError as error:
             raise ValueError(f"Unsupported query type: {query_type}") from error
 
-    def query(self, user_query: str) -> QueryResponse:
+    # ======================================================
+    # SOURCE FORMATTER
+    # ======================================================
+
+    @staticmethod
+    def _build_sources(results) -> list[Source]:
+        """
+        Convert retrieval results into API Source objects.
+        """
+
+        return [
+            Source(
+                rank=result.get(
+                    "rank",
+                    0,
+                ),
+                document=result.get(
+                    "document",
+                    "Unknown",
+                ),
+                page=result.get(
+                    "page",
+                    "N/A",
+                ),
+                chunk_id=result.get(
+                    "chunk_id",
+                    "N/A",
+                ),
+                hybrid_score=float(
+                    result.get(
+                        "hybrid_score",
+                        0.0,
+                    )
+                ),
+                bm25_score=float(
+                    result.get(
+                        "bm25_score",
+                        0.0,
+                    )
+                ),
+                faiss_score=float(
+                    result.get(
+                        "faiss_score",
+                        0.0,
+                    )
+                ),
+            )
+            for result in results
+        ]
+
+    # ======================================================
+    # EVIDENCE FORMATTER
+    # ======================================================
+
+    @staticmethod
+    def _build_feature_evidence(results) -> list[dict]:
+        """
+        Convert retrieval results into evidence objects
+        used by advanced RAG features.
+        """
+
+        return [
+            {
+                "document": result.get(
+                    "document",
+                    "Unknown",
+                ),
+                "page": result.get(
+                    "page",
+                    "N/A",
+                ),
+                "chunk_id": result.get(
+                    "chunk_id",
+                    "N/A",
+                ),
+                "text": result.get(
+                    "text",
+                    "",
+                ),
+            }
+            for result in results
+        ]
+
+    # ======================================================
+    # MAIN RAG QUERY
+    # ======================================================
+
+    def query(
+        self,
+        user_query: str,
+    ) -> QueryResponse:
         """
         Execute the complete UNKNOWN X RAG pipeline.
         """
@@ -79,10 +204,11 @@ class RAGService:
         logger.info(f"Processing query: {user_query}")
 
         # ==================================================
-        # 1. Query Understanding
+        # 1. QUERY UNDERSTANDING
         # ==================================================
 
         understanding = self.query_understanding.analyze(user_query)
+
         normalized_query = understanding.query
 
         query_type = self._map_query_type(understanding.query_type)
@@ -90,7 +216,7 @@ class RAGService:
         logger.info(f"Query Type: {query_type.value}")
 
         # ==================================================
-        # 2. Hybrid Retrieval
+        # 2. HYBRID RETRIEVAL
         # ==================================================
 
         results = self.retriever.search(normalized_query)
@@ -98,7 +224,7 @@ class RAGService:
         logger.info(f"Retrieved {len(results)} chunks.")
 
         # ==================================================
-        # 3. Evidence Trail
+        # 3. EVIDENCE TRAIL
         # ==================================================
 
         evidence = build_evidence(results)
@@ -106,19 +232,23 @@ class RAGService:
         logger.info(f"Evidence generated for {len(evidence)} chunks.")
 
         # ==================================================
-        # 4. Document IQ Generation
+        # 4. DOCUMENT IQ
         # ==================================================
 
         processed_documents = set()
 
         for item in evidence:
 
-            document_name = item["document"]
+            document_name = item.get(
+                "document",
+                "Unknown",
+            )
 
             if document_name in processed_documents:
                 continue
 
             try:
+
                 metadata = build_document_metadata(document_name)
 
                 iq_report = calculate_document_iq(metadata)
@@ -128,23 +258,24 @@ class RAGService:
                 save_document_metadata(metadata)
 
                 logger.info(
-                    f"Document IQ generated for {document_name} "
+                    f"Document IQ generated for "
+                    f"{document_name} "
                     f"({iq_report['iq_score']})"
                 )
 
             except Exception as error:  # noqa: BLE001
-                logger.warning(f"Document IQ failed for {document_name}: {error}")
+                logger.warning(f"Document IQ failed for " f"{document_name}: {error}")
 
             processed_documents.add(document_name)
 
         # ==================================================
-        # 5. Context Building
+        # 5. CONTEXT BUILDING
         # ==================================================
 
         context = self.context_builder.build(results)
 
         # ==================================================
-        # 6. Prompt Generation
+        # 6. PROMPT GENERATION
         # ==================================================
 
         prompt = self.prompt_engine.build_prompt(
@@ -154,41 +285,31 @@ class RAGService:
         )
 
         # ==================================================
-        # 7. Gemini Generation
+        # 7. MULTI-LLM GENERATION
         # ==================================================
 
         response = self.llm.generate(prompt)
 
         if not response.success:
+
             error = RuntimeError(response.error or "LLM generation failed.")
-            error.error_kind = (  # pyright: ignore[reportAttributeAccessIssue]
-                response.error_kind
-            )  # pyright: ignore[reportAttributeAccessIssue]
+
+            error.error_kind = response.error_kind  # type: ignore
+
             raise error
 
         answer = response.answer
 
         # ==================================================
-        # 8. API Source Formatting
+        # 8. SOURCE FORMATTING
         # ==================================================
 
-        sources = [
-            Source(
-                rank=result.get("rank", 0),
-                document=result.get("document", "Unknown"),
-                page=result.get("page", "N/A"),
-                chunk_id=result.get("chunk_id", "N/A"),
-                hybrid_score=float(result.get("hybrid_score", 0.0)),
-                bm25_score=float(result.get("bm25_score", 0.0)),
-                faiss_score=float(result.get("faiss_score", 0.0)),
-            )
-            for result in results
-        ]
+        sources = self._build_sources(results)
 
-        logger.info(f"Pipeline completed successfully with {len(sources)} sources.")
+        logger.info("Pipeline completed successfully " f"with {len(sources)} sources.")
 
         # ==================================================
-        # 9. FastAPI Response
+        # 9. API RESPONSE
         # ==================================================
 
         return QueryResponse(
@@ -198,32 +319,37 @@ class RAGService:
             sources=sources,
         )
 
+    # ======================================================
+    # CLAIM VERIFICATION
+    # ======================================================
+
     def verify_claim(
         self,
         claim: str,
     ) -> ClaimVerificationResponse:
         """
-        Verify a user-provided claim against retrieved document evidence.
+        Verify a user-provided claim against
+        retrieved document evidence.
         """
 
         logger.info(f"Verifying claim: {claim}")
 
         # ==================================================
-        # 1. Retrieve relevant evidence
+        # 1. RETRIEVE EVIDENCE
         # ==================================================
 
         results = self.retriever.search(claim)
 
-        logger.info(f"Retrieved {len(results)} chunks for claim verification.")
+        logger.info(f"Retrieved {len(results)} chunks " f"for claim verification.")
 
         # ==================================================
-        # 2. Build grounded context
+        # 2. BUILD CONTEXT
         # ==================================================
 
         context = self.context_builder.build(results)
 
         # ==================================================
-        # 3. Build verification prompt
+        # 3. BUILD VERIFICATION PROMPT
         # ==================================================
 
         prompt = self.claim_verifier.build_verification_prompt(
@@ -232,22 +358,21 @@ class RAGService:
         )
 
         # ==================================================
-        # 4. LLM analysis
+        # 4. LLM ANALYSIS
         # ==================================================
 
         response = self.llm.generate(prompt)
 
         if not response.success:
+
             error = RuntimeError(response.error or "Claim verification failed.")
 
-            error.error_kind = (  # pyright: ignore[reportAttributeAccessIssue]
-                response.error_kind
-            )
+            error.error_kind = response.error_kind  # type: ignore
 
             raise error
 
         # ==================================================
-        # 5. Parse structured verification result
+        # 5. PARSE VERIFICATION RESULT
         # ==================================================
 
         verification = self.claim_verifier.parse_response(
@@ -256,23 +381,12 @@ class RAGService:
         )
 
         # ==================================================
-        # 6. Format source information
+        # 6. SOURCES
         # ==================================================
 
-        sources = [
-            Source(
-                rank=result.get("rank", 0),
-                document=result.get("document", "Unknown"),
-                page=result.get("page", "N/A"),
-                chunk_id=result.get("chunk_id", "N/A"),
-                hybrid_score=float(result.get("hybrid_score", 0.0)),
-                bm25_score=float(result.get("bm25_score", 0.0)),
-                faiss_score=float(result.get("faiss_score", 0.0)),
-            )
-            for result in results
-        ]
+        sources = self._build_sources(results)
 
-        logger.info(f"Claim verification completed: " f"{verification.verdict.value}")
+        logger.info("Claim verification completed: " f"{verification.verdict.value}")
 
         return ClaimVerificationResponse(
             claim=verification.claim,
@@ -280,44 +394,41 @@ class RAGService:
             confidence=verification.confidence,
             explanation=verification.explanation,
             evidence=verification.evidence,
-            source_chunk_ids=verification.source_chunk_ids,
+            source_chunk_ids=(verification.source_chunk_ids),
             sources=sources,
         )
+
+    # ======================================================
+    # CONTRADICTION FINDER
+    # ======================================================
 
     def find_contradictions(
         self,
         query: str,
     ):
         """
-        Detect contradictions across retrieved document evidence.
+        Detect contradictions across retrieved
+        document evidence.
         """
 
         logger.info(f"Running contradiction analysis: {query}")
 
         # ==================================================
-        # 1. Retrieve relevant evidence
+        # 1. RETRIEVE EVIDENCE
         # ==================================================
 
         results = self.retriever.search(query)
 
-        logger.info(f"Retrieved {len(results)} chunks for contradiction analysis.")
+        logger.info(f"Retrieved {len(results)} chunks " f"for contradiction analysis.")
 
         # ==================================================
-        # 2. Prepare evidence for contradiction analysis
+        # 2. PREPARE EVIDENCE
         # ==================================================
 
-        evidence = [
-            {
-                "document": result.get("document", "Unknown"),
-                "page": result.get("page", "N/A"),
-                "chunk_id": result.get("chunk_id", "N/A"),
-                "text": result.get("text", ""),
-            }
-            for result in results
-        ]
+        evidence = self._build_feature_evidence(results)
 
         # ==================================================
-        # 3. Build contradiction prompt
+        # 3. BUILD PROMPT
         # ==================================================
 
         prompt = self.contradiction_finder.build_contradiction_prompt(
@@ -326,22 +437,21 @@ class RAGService:
         )
 
         # ==================================================
-        # 4. LLM analysis
+        # 4. LLM ANALYSIS
         # ==================================================
 
         response = self.llm.generate(prompt)
 
         if not response.success:
+
             error = RuntimeError(response.error or "Contradiction analysis failed.")
 
-            error.error_kind = (  # pyright: ignore[reportAttributeAccessIssue]
-                response.error_kind
-            )
+            error.error_kind = response.error_kind  # type: ignore
 
             raise error
 
         # ==================================================
-        # 5. Parse structured contradiction result
+        # 5. PARSE RESULT
         # ==================================================
 
         report = self.contradiction_finder.parse_response(
@@ -350,8 +460,78 @@ class RAGService:
         )
 
         logger.info(
-            f"Contradiction analysis completed: "
-            f"{report.contradictions_found} contradictions found."
+            "Contradiction analysis completed: "
+            f"{report.contradictions_found} "
+            "contradictions found."
+        )
+
+        return report
+
+    # ======================================================
+    # RESEARCH COMPARISON
+    # ======================================================
+
+    def compare_research(
+        self,
+        query: str,
+    ):
+        """
+        Compare research entities using only
+        retrieved document evidence.
+        """
+
+        logger.info(f"Running research comparison: {query}")
+
+        # ==================================================
+        # 1. RETRIEVE RELEVANT EVIDENCE
+        # ==================================================
+
+        results = self.retriever.search(query)
+
+        logger.info(f"Retrieved {len(results)} chunks " f"for research comparison.")
+
+        # ==================================================
+        # 2. PREPARE EVIDENCE
+        # ==================================================
+
+        evidence = self._build_feature_evidence(results)
+
+        # ==================================================
+        # 3. BUILD COMPARISON PROMPT
+        # ==================================================
+
+        prompt = self.research_comparison.build_comparison_prompt(
+            query=query,
+            evidence=evidence,
+        )
+
+        # ==================================================
+        # 4. LLM ANALYSIS
+        # ==================================================
+
+        response = self.llm.generate_structured(prompt)
+
+        if not response.success:
+
+            error = RuntimeError(response.error or "Research comparison failed.")
+
+            error.error_kind = response.error_kind  # type: ignore
+
+            raise error
+
+        # ==================================================
+        # 5. PARSE STRUCTURED RESULT
+        # ==================================================
+
+        report = self.research_comparison.parse_response(
+            query=query,
+            response_text=response.answer,
+        )
+
+        logger.info(
+            "Research comparison completed: "
+            f"{len(report.entities)} entities, "
+            f"{len(report.comparison)} comparison aspects."
         )
 
         return report

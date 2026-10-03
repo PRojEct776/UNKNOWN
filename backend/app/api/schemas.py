@@ -100,3 +100,36 @@ class ContradictionResponse(BaseModel):
     claims: list[EvidenceClaimResponse]
     relationships: list[ClaimRelationshipResponse]
     contradictions_found: int
+
+
+class ResearchComparisonRequest(BaseModel):
+    """Incoming research comparison request."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Research question or topic to compare.",
+    )
+
+
+class ComparisonValueResponse(BaseModel):
+    entity: str
+    value: str
+    evidence: str
+    document: str
+    page: int | str
+    chunk_id: str
+
+
+class ComparisonAspectResponse(BaseModel):
+    aspect: str
+    values: list[ComparisonValueResponse]
+
+
+class ResearchComparisonResponse(BaseModel):
+    query: str
+    entities: list[str]
+    comparison: list[ComparisonAspectResponse]
+    summary: str
+    sources: list[dict]

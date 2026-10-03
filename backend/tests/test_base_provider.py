@@ -121,7 +121,7 @@ def test_immutable():
     )
 
     try:
-        response.answer = "Changed"
+        response.answer = "Changed"  # type: ignore
     except FrozenInstanceError:
         return
 

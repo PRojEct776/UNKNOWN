@@ -127,6 +127,42 @@ class GeminiProvider(BaseProvider):
             return text
         raise self._empty_error(response)
 
+    def _call_structured(
+        self,
+        prompt: str,
+        system: str | None = None,
+    ) -> str:
+        """Call Gemini with native JSON output enabled."""
+        config_kwargs = {
+            **self._config_kwargs,
+            "response_mime_type": "application/json",
+        }
+
+        if system:
+            config_kwargs["system_instruction"] = system
+
+        config = types.GenerateContentConfig(**config_kwargs)
+
+        response = self.client.models.generate_content(  # type: ignore
+            model=self.model,
+            contents=prompt,
+            config=config,
+        )
+
+        text = response.text
+        if text and text.strip():
+            return text
+
+        raise self._empty_error(response)
+
+    def generate_structured(
+        self,
+        prompt: str,
+        system: str | None = None,
+    ) -> str:
+        """Generate a structured JSON response using Gemini's native JSON mode."""
+        return self._call_structured(prompt, system)
+
     @staticmethod
     def _empty_error(response: Any) -> LLMError:
         block = getattr(

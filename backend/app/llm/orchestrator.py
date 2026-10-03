@@ -134,6 +134,54 @@ class LLMOrchestrator:
 
         return self._failure(start, " | ".join(failures), last_kind)
 
+    def generate_structured(
+        self,
+        prompt: str,
+        system: str | None = None,
+    ) -> LLMResponse:
+        """Generate structured JSON using provider-native support with fallback."""
+        start = perf_counter()
+
+        if not prompt or not prompt.strip():
+            return self._failure(
+                start,
+                "Prompt is empty.",
+                ErrorKind.INVALID_REQUEST,
+            )
+
+        deadline = monotonic() + self.total_timeout_s
+        failures: list[str] = []
+        last_kind: ErrorKind | None = None
+
+        for provider in self._candidates():
+            if failures and monotonic() >= deadline:
+                logger.warning(
+                    "LLM structured-output time budget spent; "
+                    "not trying further providers."
+                )
+                break
+
+            response = provider.generate_structured(prompt, system)
+            self.health.record(response)
+
+            if response.success:
+                if failures:
+                    logger.info(
+                        "Structured answer supplied by fallback provider %s after: %s",
+                        response.provider,
+                        "; ".join(failures),
+                    )
+                return response
+
+            failures.append(f"{response.provider}: {response.error}")
+            last_kind = response.error_kind
+
+        return self._failure(
+            start,
+            " | ".join(failures),
+            last_kind,
+        )
+
     async def agenerate(self, prompt: str, system: str | None = None) -> LLMResponse:
         """Async wrapper: runs the blocking call in a worker thread."""
         return await asyncio.to_thread(self.generate, prompt, system)

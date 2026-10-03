@@ -105,7 +105,7 @@ class BaseProvider(ABC):
                 raise ValueError("Provider returned None.")
 
             if not isinstance(text, str):
-                raise ValueError("Provider returned an empty response.")
+                raise ValueError("Provider returned an empty response.")  # noqa: TRY004
 
             answer = text.strip()
 
@@ -119,6 +119,62 @@ class BaseProvider(ABC):
 
             logger.warning(
                 "[%s/%s] %s failure: %s",
+                self.provider_name,
+                self.model,
+                kind.value,
+                error,
+            )
+
+        return LLMResponse(
+            answer=answer,
+            provider=self.provider_name,
+            model=self.model,
+            latency_ms=round((perf_counter() - start) * 1000, 2),
+            success=error is None,
+            error=error,
+            error_kind=kind,
+        )
+
+    def generate_structured(
+        self,
+        prompt: str,
+        system: str | None = None,
+    ) -> LLMResponse:
+        """Run one structured-output call with provider-specific JSON support."""
+        start = perf_counter()
+        answer = ""
+        error: str | None = None
+        kind: ErrorKind | None = None
+
+        try:
+            call = getattr(self, "_call_structured", None)
+
+            if call is None:
+                return self.generate(prompt, system)
+
+            if system is None:
+                text = call(prompt)
+            else:
+                text = call(prompt, system)
+
+            if text is None:
+                raise ValueError("Provider returned None.")
+
+            if not isinstance(text, str):
+                raise ValueError("Provider returned an empty response.")  # noqa: TRY004
+
+            answer = text.strip()
+
+            if not answer:
+                raise ValueError("Provider returned an empty response.")
+
+        except Exception as exc:  # noqa: BLE001
+            answer = ""
+            kind = self._kind_of(exc)
+            error = f"{type(exc).__name__}: {str(exc)[:_MAX_ERROR_CHARS]}"
+
+            logger.warning(
+                "[%s/%s] structured %s failure: %s",
                 self.provider_name,
                 self.model,
                 kind.value,

@@ -4,7 +4,7 @@ UNKNOWN Project - FastAPI Application
 Exposes the verified UNKNOWN RAG pipeline through HTTP APIs.
 """
 
-import time
+import time  # noqa: I001
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,10 +16,14 @@ from app.api.schemas import (
     ContradictionResponse,
     QueryRequest,
     QueryResponse,
+    ResearchComparisonRequest,
+    ResearchComparisonResponse,
 )
 from app.rag.config import settings
 from app.rag.logger import logger
-from app.services.rag_service import RAGService
+from app.services.rag_service import (
+    RAGService,
+)  # pyright: ignore[reportAttributeAccessIssue]
 
 # ============================================================
 # APPLICATION
@@ -260,10 +264,10 @@ def contradictions(request: ContradictionRequest):
 
         return ContradictionResponse(
             query=report.query,
-            claims=[claim.model_dump() for claim in report.claims],
+            claims=[claim.model_dump() for claim in report.claims],  # type: ignore
             relationships=[
                 relationship.model_dump() for relationship in report.relationships
-            ],
+            ],  # type: ignore
             contradictions_found=report.contradictions_found,
         )
 
@@ -310,3 +314,51 @@ def contradictions(request: ContradictionRequest):
     finally:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(f"Contradiction endpoint completed in {elapsed_ms:.2f} ms.")
+
+
+@app.post(
+    "/compare",
+    response_model=ResearchComparisonResponse,
+)
+def compare(request: ResearchComparisonRequest):
+    start_time = time.perf_counter()
+
+    try:
+        report = rag_service.compare_research(request.query)
+
+        return ResearchComparisonResponse(
+            query=report.query,
+            entities=report.entities,
+            comparison=[aspect.model_dump() for aspect in report.comparison],  # type: ignore
+            summary=report.summary,
+            sources=report.sources,
+        )
+
+    except Exception as error:
+        logger.exception("Research comparison failed.")
+
+        error_kind = getattr(error, "error_kind", None)
+
+        if error_kind == "rate_limit":
+            raise HTTPException(status_code=429, detail=str(error)) from error
+
+        if error_kind == "transient":
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+        if error_kind == "invalid_request":
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+        if error_kind == "fatal":
+            raise HTTPException(status_code=502, detail=str(error)) from error
+
+        if isinstance(error, ValueError):
+            raise HTTPException(status_code=502, detail=str(error)) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail="Research comparison failed.",
+        ) from error
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(f"Research comparison endpoint completed in {elapsed_ms:.2f} ms.")
