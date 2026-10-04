@@ -14,6 +14,8 @@ from app.api.schemas import (
     AdaptiveAnswerResponse,
     ClaimVerificationRequest,
     ClaimVerificationResponse,
+    ConceptDiscoveryRequest,
+    ConceptDiscoveryResponse,
     ContradictionRequest,
     ContradictionResponse,
     DebateRequest,
@@ -258,6 +260,100 @@ def verify_claim(request: ClaimVerificationRequest):
     logger.info(f"Claim verification request completed in {elapsed_ms} ms")
 
     return response
+
+
+@app.post(
+    "/discover-concept",
+    response_model=ConceptDiscoveryResponse,
+    responses={
+        400: {
+            "description": "Invalid concept description.",
+        },
+        429: {
+            "description": "LLM provider quota or rate limit exceeded.",
+        },
+        502: {
+            "description": "LLM providers failed to identify the concept.",
+        },
+        503: {
+            "description": "LLM providers are temporarily unavailable.",
+        },
+        500: {
+            "description": "Unexpected concept discovery failure.",
+        },
+    },
+)
+def discover_concept(request: ConceptDiscoveryRequest):
+    """Identify a technical concept from a natural-language description."""
+
+    start_time = time.perf_counter()
+
+    try:
+        result = rag_service.discover_concept(request.description)
+
+        return ConceptDiscoveryResponse(
+            description=result.description,
+            concept=result.concept,
+            confidence=result.confidence,
+            explanation=result.explanation,
+            evidence=result.evidence,
+            source_chunk_ids=result.source_chunk_ids,
+        )
+
+    except ValueError as error:
+        logger.exception("Concept discovery validation failed.")
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except RuntimeError as error:
+        logger.exception("Concept discovery failed.")
+
+        error_kind = getattr(error, "error_kind", None)
+
+        if error_kind == "rate_limit":
+            raise HTTPException(
+                status_code=429,
+                detail="LLM provider quota or rate limit exceeded. Please try again later.",
+            ) from error
+
+        if error_kind == "transient":
+            raise HTTPException(
+                status_code=503,
+                detail="LLM providers are temporarily unavailable. Please try again later.",
+            ) from error
+
+        if error_kind == "invalid_request":
+            raise HTTPException(
+                status_code=400,
+                detail="The LLM provider rejected the request.",
+            ) from error
+
+        if error_kind == "fatal":
+            raise HTTPException(
+                status_code=502,
+                detail="The configured LLM provider rejected the request.",
+            ) from error
+
+        raise HTTPException(
+            status_code=502,
+            detail="LLM providers were unable to discover the concept.",
+        ) from error
+
+    except Exception as error:
+        logger.exception("Unexpected concept discovery failure.")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to discover the concept at the moment.",
+        ) from error
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "Concept discovery endpoint completed in %.2f ms.",
+            elapsed_ms,
+        )
 
 
 @app.post(

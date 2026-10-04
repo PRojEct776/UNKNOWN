@@ -260,3 +260,25 @@ class ResearchComparisonResponse(BaseModel):
     comparison: list[ComparisonAspectResponse]
     summary: str
     sources: list[dict]
+
+
+class ConceptDiscoveryRequest(BaseModel):
+    """Incoming concept discovery request."""
+
+    description: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Natural-language description of a concept the user cannot remember.",
+    )
+
+
+class ConceptDiscoveryResponse(BaseModel):
+    """Concept discovery API response."""
+
+    description: str
+    concept: str | None
+    confidence: float
+    explanation: str
+    evidence: list[str]
+    source_chunk_ids: list[str]
