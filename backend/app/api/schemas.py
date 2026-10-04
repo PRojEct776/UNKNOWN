@@ -131,6 +131,41 @@ class ResearchGapResponse(BaseModel):
     sources: list[dict]
 
 
+class DebateRequest(BaseModel):
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Research question for evidence-grounded debate.",
+    )
+
+    position_a: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="First position in the debate.",
+    )
+
+    position_b: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Second position in the debate.",
+    )
+
+
+class DebateResponse(BaseModel):
+    query: str
+    topic: str
+    position_a: str
+    position_b: str
+    arguments: list[dict]
+    rebuttals: list[dict]
+    final_verdict: str
+    verdict_confidence: float
+    sources: list[dict]
+
+
 class ComparisonValueResponse(BaseModel):
     entity: str
     value: str

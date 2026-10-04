@@ -14,6 +14,8 @@ from app.api.schemas import (
     ClaimVerificationResponse,
     ContradictionRequest,
     ContradictionResponse,
+    DebateRequest,
+    DebateResponse,
     QueryRequest,
     QueryResponse,
     ResearchComparisonRequest,
@@ -371,7 +373,7 @@ def research_gaps(request: ResearchGapRequest):
     start_time = time.perf_counter()
 
     try:
-        report = rag_service.find_research_gaps(request.query)
+        report = rag_service.find_research_gaps(request.query)  # type: ignore
 
         return ResearchGapResponse(
             query=report.query,
@@ -426,5 +428,76 @@ def research_gaps(request: ResearchGapRequest):
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
             "Research gap endpoint completed in %.2f ms.",
+            elapsed_ms,
+        )
+
+
+@app.post("/debate", response_model=DebateResponse)
+def debate(request: DebateRequest):
+    start_time = time.perf_counter()
+
+    try:
+        report = rag_service.run_debate(  # type: ignore
+            query=request.query,
+            position_a=request.position_a,
+            position_b=request.position_b,
+        )
+
+        return DebateResponse(
+            query=report.query,
+            topic=report.topic,
+            position_a=report.position_a,
+            position_b=report.position_b,
+            arguments=[argument.model_dump() for argument in report.arguments],
+            rebuttals=[rebuttal.model_dump() for rebuttal in report.rebuttals],
+            final_verdict=report.final_verdict,
+            verdict_confidence=report.verdict_confidence,
+            sources=report.sources,
+        )
+
+    except Exception as error:
+        logger.exception("AI debate failed.")
+
+        error_kind = getattr(error, "error_kind", None)
+
+        if error_kind == "rate_limit":
+            raise HTTPException(
+                status_code=429,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "transient":
+            raise HTTPException(
+                status_code=503,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "invalid_request":
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "fatal":
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        if isinstance(error, ValueError):
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail="AI debate failed.",
+        ) from error
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "AI debate endpoint completed in %.2f ms.",
             elapsed_ms,
         )

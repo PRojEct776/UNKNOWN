@@ -34,6 +34,7 @@ from app.query.query_understanding import (
 from app.rag.claim_verifier import ClaimVerifier
 from app.rag.context_builder import ContextBuilder
 from app.rag.contradiction_finder import ContradictionFinder
+from app.rag.debate_engine import DebateEngine
 from app.rag.evidence import build_evidence
 from app.rag.hybrid_search import HybridSearch
 from app.rag.logger import logger
@@ -69,6 +70,8 @@ class RAGService:
         self.context_builder = ContextBuilder(max_chunks=5)
 
         self.prompt_engine = PromptEngine()
+
+        self.debate_engine = DebateEngine()
 
         # ==================================================
         # UNIQUE UNKNOWN FEATURES
@@ -538,6 +541,38 @@ class RAGService:
         )
 
         return report
+
+
+def run_debate(
+    self,
+    query: str,
+    position_a: str,
+    position_b: str,
+):
+    results = self.retriever.search(query)
+
+    evidence = self._build_feature_evidence(results)
+
+    prompt = self.debate_engine.build_debate_prompt(
+        query=query,
+        position_a=position_a,
+        position_b=position_b,
+        evidence=evidence,
+    )
+
+    response = self.llm.generate_structured(prompt)
+
+    if not response.success:
+        error = RuntimeError(response.error or "AI debate generation failed.")
+        error.error_kind = response.error_kind  # type: ignore
+        raise error
+
+    return self.debate_engine.parse_response(
+        query=query,
+        position_a=position_a,
+        position_b=position_b,
+        response_text=response.answer,
+    )
 
     def find_research_gaps(self, query: str):
         """Identify evidence-grounded research gaps."""
