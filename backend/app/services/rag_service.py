@@ -33,6 +33,7 @@ from app.query.query_understanding import (
 )
 from app.rag.adaptive_answer import AdaptiveAnswerEngine
 from app.rag.claim_verifier import ClaimVerifier
+from app.rag.concept_discovery import ConceptDiscoveryEngine
 from app.rag.context_builder import ContextBuilder
 from app.rag.contradiction_finder import ContradictionFinder
 from app.rag.debate_engine import DebateEngine
@@ -72,6 +73,8 @@ class RAGService:
         self.retriever = HybridSearch()
 
         self.context_builder = ContextBuilder(max_chunks=5)
+
+        self.concept_discovery = ConceptDiscoveryEngine()
 
         self.prompt_engine = PromptEngine()
 
@@ -346,6 +349,60 @@ class RAGService:
         )
 
     # ======================================================
+    # CONCEPT DISCOVERY
+    # ======================================================
+
+    def discover_concept(self, description: str):
+        """
+        Identify an unknown technical concept from a user's
+        natural-language description using retrieved evidence.
+        """
+
+        if not description or not description.strip():
+            raise ValueError("Description must not be empty.")
+
+        logger.info(f"Running concept discovery: {description}")
+
+        results = self.retriever.search(
+            description,
+            top_k=10,
+        )
+
+        if not results:
+            raise ValueError("No relevant evidence was found for concept discovery.")
+
+        logger.info(f"Retrieved {len(results)} chunks for concept discovery.")
+
+        concept_context_builder = ContextBuilder(max_chunks=10)
+
+        context = concept_context_builder.build(results)
+
+        prompt = self.concept_discovery.build_concept_prompt(
+            description=description,
+            context=context,
+        )
+
+        response = self.llm.generate_structured(prompt)
+
+        if not response.success:
+            error = RuntimeError(response.error or "Concept discovery failed.")
+            error.error_kind = response.error_kind  # type: ignore
+            raise error
+
+        result = self.concept_discovery.parse_response(
+            description=description,
+            response_text=response.answer,
+        )
+
+        logger.info(
+            "Concept discovery completed: "
+            f"concept={result.concept}, "
+            f"confidence={result.confidence}"
+        )
+
+        return result
+
+    # ======================================================
     # CLAIM VERIFICATION
     # ======================================================
 
@@ -587,9 +644,7 @@ class RAGService:
         response = self.llm.generate_structured(prompt)
 
         if not response.success:
-            error = RuntimeError(
-                response.error or "AI debate generation failed."
-            )
+            error = RuntimeError(response.error or "AI debate generation failed.")
             error.error_kind = response.error_kind  # type: ignore
             raise error
 
@@ -618,9 +673,7 @@ class RAGService:
         response = self.llm.generate_structured(prompt)
 
         if not response.success:
-            error = RuntimeError(
-                response.error or "Knowledge DNA generation failed."
-            )
+            error = RuntimeError(response.error or "Knowledge DNA generation failed.")
             error.error_kind = response.error_kind  # type: ignore
             raise error
 
@@ -676,9 +729,7 @@ class RAGService:
         response = self.llm.generate_structured(prompt)
 
         if not response.success:
-            error = RuntimeError(
-                response.error or "Research gap detection failed."
-            )
+            error = RuntimeError(response.error or "Research gap detection failed.")
             error.error_kind = response.error_kind  # type: ignore
             raise error
 
@@ -731,9 +782,7 @@ class RAGService:
         )
 
         if not response.success:
-            error = RuntimeError(
-                response.error or "Visual answer generation failed."
-            )
+            error = RuntimeError(response.error or "Visual answer generation failed.")
             error.error_kind = response.error_kind  # type: ignore
             raise error
 
