@@ -201,7 +201,7 @@ evidence, return an empty "gaps" list.
     @staticmethod
     def _parse_gap(value: Any) -> ResearchGap:
         if not isinstance(value, dict):
-            raise ValueError("Invalid research gap object.")
+            raise ValueError("Invalid research gap object.")  # noqa: TRY004
 
         gap = str(value.get("gap", "")).strip()
         rationale = str(value.get("rationale", "")).strip()
@@ -215,7 +215,7 @@ evidence, return an empty "gaps" list.
         evidence = value.get("evidence", [])
 
         if not isinstance(evidence, list):
-            raise ValueError("Research gap evidence must be a list.")
+            raise ValueError("Research gap evidence must be a list.")  # noqa: TRY004
 
         evidence = [str(item).strip() for item in evidence if str(item).strip()]
 
@@ -285,7 +285,7 @@ evidence, return an empty "gaps" list.
             limitations = []
 
         if not isinstance(raw_gaps, list):
-            raise ValueError("Research gap 'gaps' must be a list.")
+            raise ValueError("Research gap 'gaps' must be a list.")  # noqa: TRY004
 
         gaps = [self._parse_gap(item) for item in raw_gaps]
 

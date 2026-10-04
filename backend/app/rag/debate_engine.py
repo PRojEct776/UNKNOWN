@@ -182,7 +182,9 @@ Do not add commentary outside the JSON object.
                 raise ValueError("Debate engine returned invalid JSON.") from error
 
         if not isinstance(value, dict):
-            raise ValueError("Debate engine response must be a JSON object.")
+            raise ValueError(
+                "Debate engine response must be a JSON object."
+            )  # noqa: TRY004
 
         return value
 
