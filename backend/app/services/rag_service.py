@@ -44,6 +44,7 @@ from app.rag.prompt_engine import (
     QueryType as PromptQueryType,
 )
 from app.rag.research_comparison import ResearchComparisonEngine
+from app.rag.research_gap_finder import ResearchGapFinder
 from app.rag.scoring import calculate_document_iq
 from app.services.document_service import (
     build_document_metadata,
@@ -78,6 +79,8 @@ class RAGService:
         self.contradiction_finder = ContradictionFinder()
 
         self.research_comparison = ResearchComparisonEngine()
+
+        self.research_gap_finder = ResearchGapFinder()
 
         # ==================================================
         # MULTI-LLM ORCHESTRATOR
@@ -535,3 +538,26 @@ class RAGService:
         )
 
         return report
+
+    def find_research_gaps(self, query: str):
+        """Identify evidence-grounded research gaps."""
+        results = self.retriever.search(query)
+
+        evidence = self._build_feature_evidence(results)
+
+        prompt = self.research_gap_finder.build_gap_prompt(
+            query=query,
+            evidence=evidence,
+        )
+
+        response = self.llm.generate_structured(prompt)
+
+        if not response.success:
+            error = RuntimeError(response.error or "Research gap detection failed.")
+            error.error_kind = response.error_kind  # type: ignore
+            raise error
+
+        return self.research_gap_finder.parse_response(
+            query=query,
+            response_text=response.answer,
+        )

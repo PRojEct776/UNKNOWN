@@ -113,6 +113,24 @@ class ResearchComparisonRequest(BaseModel):
     )
 
 
+class ResearchGapRequest(BaseModel):
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Research question or topic for gap detection.",
+    )
+
+
+class ResearchGapResponse(BaseModel):
+    query: str
+    research_area: str
+    existing_findings: list[str]
+    reported_limitations: list[str]
+    gaps: list[dict]
+    sources: list[dict]
+
+
 class ComparisonValueResponse(BaseModel):
     entity: str
     value: str

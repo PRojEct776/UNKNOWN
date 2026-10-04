@@ -4,7 +4,7 @@ UNKNOWN Project - FastAPI Application
 Exposes the verified UNKNOWN RAG pipeline through HTTP APIs.
 """
 
-import time  # noqa: I001
+import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +18,8 @@ from app.api.schemas import (
     QueryResponse,
     ResearchComparisonRequest,
     ResearchComparisonResponse,
+    ResearchGapRequest,
+    ResearchGapResponse,
 )
 from app.rag.config import settings
 from app.rag.logger import logger
@@ -362,3 +364,67 @@ def compare(request: ResearchComparisonRequest):
     finally:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(f"Research comparison endpoint completed in {elapsed_ms:.2f} ms.")
+
+
+@app.post("/gaps", response_model=ResearchGapResponse)
+def research_gaps(request: ResearchGapRequest):
+    start_time = time.perf_counter()
+
+    try:
+        report = rag_service.find_research_gaps(request.query)
+
+        return ResearchGapResponse(
+            query=report.query,
+            research_area=report.research_area,
+            existing_findings=report.existing_findings,
+            reported_limitations=report.reported_limitations,
+            gaps=[gap.model_dump() for gap in report.gaps],
+            sources=report.sources,
+        )
+
+    except Exception as error:
+        logger.exception("Research gap detection failed.")
+
+        error_kind = getattr(error, "error_kind", None)
+
+        if error_kind == "rate_limit":
+            raise HTTPException(
+                status_code=429,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "transient":
+            raise HTTPException(
+                status_code=503,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "invalid_request":
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "fatal":
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        if isinstance(error, ValueError):
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail="Research gap detection failed.",
+        ) from error
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "Research gap endpoint completed in %.2f ms.",
+            elapsed_ms,
+        )
