@@ -10,6 +10,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.schemas import (
+    AdaptiveAnswerRequest,
+    AdaptiveAnswerResponse,
     ClaimVerificationRequest,
     ClaimVerificationResponse,
     ContradictionRequest,
@@ -650,5 +652,44 @@ def knowledge_mind_map(request: KnowledgeMindMapRequest):
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
             "Knowledge mind map endpoint completed in %.2f ms.",
+            elapsed_ms,
+        )
+
+
+@app.post(
+    "/adaptive-answer",
+    response_model=AdaptiveAnswerResponse,
+)
+def adaptive_answer(request: AdaptiveAnswerRequest):
+    start_time = time.perf_counter()
+
+    try:
+        mode = rag_service.determine_answer_mode(  # type: ignore
+            query=request.query,
+        )
+
+        return AdaptiveAnswerResponse(
+            query=request.query,
+            mode=mode.value,
+        )
+
+    except ValueError as error:
+        logger.exception("Adaptive answer mode failed.")
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception("Adaptive answer mode failed.")
+        raise HTTPException(
+            status_code=500,
+            detail="Adaptive answer mode failed.",
+        ) from error
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "Adaptive answer endpoint completed in %.2f ms.",
             elapsed_ms,
         )

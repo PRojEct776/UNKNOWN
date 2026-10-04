@@ -170,3 +170,49 @@ def test_query_accepts_max_length_query():
         )
 
     assert response.status_code == 429
+
+
+def test_adaptive_answer_comparison():
+    response = client.post(
+        "/adaptive-answer",
+        json={"query": "Compare BM25 and FAISS"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "query": "Compare BM25 and FAISS",
+        "mode": "COMPARATIVE",
+    }
+
+
+def test_adaptive_answer_technical():
+    response = client.post(
+        "/adaptive-answer",
+        json={
+            "query": "Explain the architecture and implementation of a REST API",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "TECHNICAL"
+
+
+def test_adaptive_answer_research():
+    response = client.post(
+        "/adaptive-answer",
+        json={
+            "query": "What are the limitations and findings of this research paper?",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "RESEARCH"
+
+
+def test_adaptive_answer_rejects_empty_query():
+    response = client.post(
+        "/adaptive-answer",
+        json={"query": ""},
+    )
+
+    assert response.status_code == 422

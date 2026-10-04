@@ -206,6 +206,20 @@ class KnowledgeMindMapResponse(BaseModel):
     sources: list[dict]
 
 
+class AdaptiveAnswerRequest(BaseModel):
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="User query for adaptive answer mode selection.",
+    )
+
+
+class AdaptiveAnswerResponse(BaseModel):
+    query: str
+    mode: str
+
+
 class ComparisonValueResponse(BaseModel):
     entity: str
     value: str

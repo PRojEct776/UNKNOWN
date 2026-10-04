@@ -31,6 +31,7 @@ from app.query.query_understanding import (
 from app.query.query_understanding import (
     QueryUnderstanding,
 )
+from app.rag.adaptive_answer import AdaptiveAnswerEngine
 from app.rag.claim_verifier import ClaimVerifier
 from app.rag.context_builder import ContextBuilder
 from app.rag.contradiction_finder import ContradictionFinder
@@ -79,6 +80,8 @@ class RAGService:
 
         self.knowledge_mind_map = KnowledgeMindMapEngine()
 
+        self.adaptive_answer = AdaptiveAnswerEngine()
+
         # ==================================================
         # UNIQUE UNKNOWN FEATURES
         # ==================================================
@@ -117,6 +120,14 @@ class RAGService:
 
         except KeyError as error:
             raise ValueError(f"Unsupported query type: {query_type}") from error
+
+    def determine_answer_mode(self, query: str):
+        """Determine the appropriate answer mode for a user query."""
+
+        if not query or not query.strip():
+            raise ValueError("Query must not be empty.")
+
+        return self.adaptive_answer.classify_query(query)
 
     # ======================================================
     # SOURCE FORMATTER
