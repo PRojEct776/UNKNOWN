@@ -37,6 +37,7 @@ from app.rag.contradiction_finder import ContradictionFinder
 from app.rag.debate_engine import DebateEngine
 from app.rag.evidence import build_evidence
 from app.rag.hybrid_search import HybridSearch
+from app.rag.knowledge_dna import KnowledgeDNA
 from app.rag.logger import logger
 from app.rag.prompt_engine import (
     PromptEngine,
@@ -72,6 +73,8 @@ class RAGService:
         self.prompt_engine = PromptEngine()
 
         self.debate_engine = DebateEngine()
+
+        self.knowledge_dna = KnowledgeDNA()
 
         # ==================================================
         # UNIQUE UNKNOWN FEATURES
@@ -542,6 +545,8 @@ class RAGService:
 
         return report
 
+    def generate_knowledge_dna(self, query): ...
+
 
 def run_debate(
     self,
@@ -574,25 +579,49 @@ def run_debate(
         response_text=response.answer,
     )
 
-    def find_research_gaps(self, query: str):
-        """Identify evidence-grounded research gaps."""
-        results = self.retriever.search(query)
 
-        evidence = self._build_feature_evidence(results)
+def generate_knowledge_dna(self, query: str):
+    results = self.retriever.search(query)
 
-        prompt = self.research_gap_finder.build_gap_prompt(
-            query=query,
-            evidence=evidence,
-        )
+    evidence = self._build_feature_evidence(results)
 
-        response = self.llm.generate_structured(prompt)
+    prompt = self.knowledge_dna.build_dna_prompt(
+        query=query,
+        evidence=evidence,
+    )
 
-        if not response.success:
-            error = RuntimeError(response.error or "Research gap detection failed.")
-            error.error_kind = response.error_kind  # type: ignore
-            raise error
+    response = self.llm.generate_structured(prompt)
 
-        return self.research_gap_finder.parse_response(
-            query=query,
-            response_text=response.answer,
-        )
+    if not response.success:
+        error = RuntimeError(response.error or "Knowledge DNA generation failed.")
+        error.error_kind = response.error_kind  # type: ignore
+        raise error
+
+    return self.knowledge_dna.parse_response(
+        query=query,
+        response_text=response.answer,
+    )
+
+
+def find_research_gaps(self, query: str):
+    """Identify evidence-grounded research gaps."""
+    results = self.retriever.search(query)
+
+    evidence = self._build_feature_evidence(results)
+
+    prompt = self.research_gap_finder.build_gap_prompt(
+        query=query,
+        evidence=evidence,
+    )
+
+    response = self.llm.generate_structured(prompt)
+
+    if not response.success:
+        error = RuntimeError(response.error or "Research gap detection failed.")
+        error.error_kind = response.error_kind  # type: ignore
+        raise error
+
+    return self.research_gap_finder.parse_response(
+        query=query,
+        response_text=response.answer,
+    )

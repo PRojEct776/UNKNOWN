@@ -16,6 +16,8 @@ from app.api.schemas import (
     ContradictionResponse,
     DebateRequest,
     DebateResponse,
+    KnowledgeDNARequest,
+    KnowledgeDNAResponse,
     QueryRequest,
     QueryResponse,
     ResearchComparisonRequest,
@@ -499,5 +501,84 @@ def debate(request: DebateRequest):
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
             "AI debate endpoint completed in %.2f ms.",
+            elapsed_ms,
+        )
+
+
+@app.post("/knowledge-dna", response_model=KnowledgeDNAResponse)
+def knowledge_dna(request: KnowledgeDNARequest):
+    start_time = time.perf_counter()
+
+    try:
+        report = rag_service.generate_knowledge_dna(
+            query=request.query,
+        )
+
+        if report is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Knowledge DNA generation returned no report.",
+            )
+
+        return KnowledgeDNAResponse(
+            query=report.query,
+            research_area=report.research_area,
+            core_topics=report.core_topics,
+            key_concepts=report.key_concepts,
+            methods=report.methods,
+            findings=report.findings,
+            limitations=report.limitations,
+            themes=report.themes,
+            signals=[signal.model_dump() for signal in report.signals],  # type: ignore
+            relationships=[
+                relationship.model_dump() for relationship in report.relationships  # type: ignore
+            ],
+            sources=report.sources,
+        )
+
+    except Exception as error:
+        logger.exception("Knowledge DNA generation failed.")
+
+        error_kind = getattr(error, "error_kind", None)
+
+        if error_kind == "rate_limit":
+            raise HTTPException(
+                status_code=429,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "transient":
+            raise HTTPException(
+                status_code=503,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "invalid_request":
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "fatal":
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        if isinstance(error, ValueError):
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail="Knowledge DNA generation failed.",
+        ) from error
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "Knowledge DNA endpoint completed in %.2f ms.",
             elapsed_ms,
         )

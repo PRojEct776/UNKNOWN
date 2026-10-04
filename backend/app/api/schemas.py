@@ -166,6 +166,29 @@ class DebateResponse(BaseModel):
     sources: list[dict]
 
 
+class KnowledgeDNARequest(BaseModel):
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Research topic for Knowledge DNA extraction.",
+    )
+
+
+class KnowledgeDNAResponse(BaseModel):
+    query: str
+    research_area: str
+    core_topics: list[str]
+    key_concepts: list[str]
+    methods: list[str]
+    findings: list[str]
+    limitations: list[str]
+    themes: list[str]
+    signals: list[dict]
+    relationships: list[dict]
+    sources: list[dict]
+
+
 class ComparisonValueResponse(BaseModel):
     entity: str
     value: str
