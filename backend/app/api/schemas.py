@@ -220,6 +220,26 @@ class AdaptiveAnswerResponse(BaseModel):
     mode: str
 
 
+class VisualAnswerRequest(BaseModel):
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="User query for visual answer generation.",
+    )
+
+
+class VisualAnswerResponse(BaseModel):
+    query: str
+    visual_type: str
+    title: str
+    description: str
+    data: list[dict]
+    elements: list[dict]
+    edges: list[dict]
+    sources: list[dict]
+
+
 class ComparisonValueResponse(BaseModel):
     entity: str
     value: str

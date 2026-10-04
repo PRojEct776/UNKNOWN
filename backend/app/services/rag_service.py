@@ -50,6 +50,7 @@ from app.rag.prompt_engine import (
 from app.rag.research_comparison import ResearchComparisonEngine
 from app.rag.research_gap_finder import ResearchGapFinder
 from app.rag.scoring import calculate_document_iq
+from app.rag.visual_answer import VisualAnswerEngine
 from app.services.document_service import (
     build_document_metadata,
     save_document_metadata,
@@ -81,6 +82,8 @@ class RAGService:
         self.knowledge_mind_map = KnowledgeMindMapEngine()
 
         self.adaptive_answer = AdaptiveAnswerEngine()
+
+        self.visual_answer = VisualAnswerEngine()
 
         # ==================================================
         # UNIQUE UNKNOWN FEATURES
@@ -559,106 +562,182 @@ class RAGService:
 
         return report
 
-    def generate_knowledge_dna(self, query): ...
+    # ======================================================
+    # AI DEBATE MODE
+    # ======================================================
 
+    def run_debate(
+        self,
+        query: str,
+        position_a: str,
+        position_b: str,
+    ):
+        """Generate an evidence-grounded AI debate."""
 
-def run_debate(
-    self,
-    query: str,
-    position_a: str,
-    position_b: str,
-):
-    results = self.retriever.search(query)
+        results = self.retriever.search(query)
+        evidence = self._build_feature_evidence(results)
 
-    evidence = self._build_feature_evidence(results)
+        prompt = self.debate_engine.build_debate_prompt(
+            query=query,
+            position_a=position_a,
+            position_b=position_b,
+            evidence=evidence,
+        )
 
-    prompt = self.debate_engine.build_debate_prompt(
-        query=query,
-        position_a=position_a,
-        position_b=position_b,
-        evidence=evidence,
-    )
+        response = self.llm.generate_structured(prompt)
 
-    response = self.llm.generate_structured(prompt)
+        if not response.success:
+            error = RuntimeError(
+                response.error or "AI debate generation failed."
+            )
+            error.error_kind = response.error_kind  # type: ignore
+            raise error
 
-    if not response.success:
-        error = RuntimeError(response.error or "AI debate generation failed.")
-        error.error_kind = response.error_kind  # type: ignore
-        raise error
+        return self.debate_engine.parse_response(
+            query=query,
+            position_a=position_a,
+            position_b=position_b,
+            response_text=response.answer,
+        )
 
-    return self.debate_engine.parse_response(
-        query=query,
-        position_a=position_a,
-        position_b=position_b,
-        response_text=response.answer,
-    )
+    # ======================================================
+    # KNOWLEDGE DNA
+    # ======================================================
 
+    def generate_knowledge_dna(self, query: str):
+        """Generate evidence-grounded Knowledge DNA."""
 
-def generate_knowledge_dna(self, query: str):
-    results = self.retriever.search(query)
+        results = self.retriever.search(query)
+        evidence = self._build_feature_evidence(results)
 
-    evidence = self._build_feature_evidence(results)
+        prompt = self.knowledge_dna.build_dna_prompt(
+            query=query,
+            evidence=evidence,
+        )
 
-    prompt = self.knowledge_dna.build_dna_prompt(
-        query=query,
-        evidence=evidence,
-    )
+        response = self.llm.generate_structured(prompt)
 
-    response = self.llm.generate_structured(prompt)
+        if not response.success:
+            error = RuntimeError(
+                response.error or "Knowledge DNA generation failed."
+            )
+            error.error_kind = response.error_kind  # type: ignore
+            raise error
 
-    if not response.success:
-        error = RuntimeError(response.error or "Knowledge DNA generation failed.")
-        error.error_kind = response.error_kind  # type: ignore
-        raise error
+        return self.knowledge_dna.parse_response(
+            query=query,
+            response_text=response.answer,
+        )
 
-    return self.knowledge_dna.parse_response(
-        query=query,
-        response_text=response.answer,
-    )
+    # ======================================================
+    # KNOWLEDGE MIND MAP
+    # ======================================================
 
+    def generate_knowledge_mind_map(self, query: str):
+        """Generate an evidence-grounded knowledge mind map."""
 
-def generate_knowledge_mind_map(self, query: str):
-    results = self.retriever.search(query)
+        results = self.retriever.search(query)
+        evidence = self._build_feature_evidence(results)
 
-    evidence = self._build_feature_evidence(results)
+        prompt = self.knowledge_mind_map.build_mind_map_prompt(
+            query=query,
+            evidence=evidence,
+        )
 
-    prompt = self.knowledge_mind_map.build_mind_map_prompt(
-        query=query,
-        evidence=evidence,
-    )
+        response = self.llm.generate_structured(prompt)
 
-    response = self.llm.generate_structured(prompt)
+        if not response.success:
+            error = RuntimeError(
+                response.error or "Knowledge mind map generation failed."
+            )
+            error.error_kind = response.error_kind  # type: ignore
+            raise error
 
-    if not response.success:
-        error = RuntimeError(response.error or "Knowledge mind map generation failed.")
-        error.error_kind = response.error_kind  # type: ignore
-        raise error
+        return self.knowledge_mind_map.parse_response(
+            query=query,
+            response_text=response.answer,
+        )
 
-    return self.knowledge_mind_map.parse_response(
-        query=query,
-        response_text=response.answer,
-    )
+    # ======================================================
+    # RESEARCH GAP FINDER
+    # ======================================================
 
+    def find_research_gaps(self, query: str):
+        """Identify evidence-grounded research gaps."""
 
-def find_research_gaps(self, query: str):
-    """Identify evidence-grounded research gaps."""
-    results = self.retriever.search(query)
+        results = self.retriever.search(query)
+        evidence = self._build_feature_evidence(results)
 
-    evidence = self._build_feature_evidence(results)
+        prompt = self.research_gap_finder.build_gap_prompt(
+            query=query,
+            evidence=evidence,
+        )
 
-    prompt = self.research_gap_finder.build_gap_prompt(
-        query=query,
-        evidence=evidence,
-    )
+        response = self.llm.generate_structured(prompt)
 
-    response = self.llm.generate_structured(prompt)
+        if not response.success:
+            error = RuntimeError(
+                response.error or "Research gap detection failed."
+            )
+            error.error_kind = response.error_kind  # type: ignore
+            raise error
 
-    if not response.success:
-        error = RuntimeError(response.error or "Research gap detection failed.")
-        error.error_kind = response.error_kind  # type: ignore
-        raise error
+        return self.research_gap_finder.parse_response(
+            query=query,
+            response_text=response.answer,
+        )
 
-    return self.research_gap_finder.parse_response(
-        query=query,
-        response_text=response.answer,
-    )
+    # ======================================================
+    # VISUAL ANSWER GENERATOR
+    # ======================================================
+
+    def generate_visual_answer(self, query: str):
+        """Generate an evidence-grounded visual answer specification."""
+
+        if not query or not query.strip():
+            raise ValueError("Query must not be empty.")
+
+        retrieval_results = self.retriever.search(
+            query,
+            top_k=5,
+        )
+
+        if not retrieval_results:
+            raise ValueError(
+                "No relevant evidence was found for visual answer generation."
+            )
+
+        evidence_objects = self._build_feature_evidence(
+            retrieval_results,
+        )
+
+        evidence = "\n\n".join(
+            (
+                f"Document: {item['document']}\n"
+                f"Page: {item['page']}\n"
+                f"Chunk ID: {item['chunk_id']}\n"
+                f"Evidence: {item['text']}"
+            )
+            for item in evidence_objects
+        )
+
+        prompt = self.visual_answer.build_prompt(
+            query=query,
+            evidence=evidence,
+        )
+
+        response = self.llm.generate_structured(
+            prompt=prompt,
+        )
+
+        if not response.success:
+            error = RuntimeError(
+                response.error or "Visual answer generation failed."
+            )
+            error.error_kind = response.error_kind  # type: ignore
+            raise error
+
+        return self.visual_answer.parse_response(
+            query=query,
+            response_text=response.answer,
+        )

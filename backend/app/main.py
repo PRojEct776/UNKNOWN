@@ -28,6 +28,8 @@ from app.api.schemas import (
     ResearchComparisonResponse,
     ResearchGapRequest,
     ResearchGapResponse,
+    VisualAnswerRequest,
+    VisualAnswerResponse,
 )
 from app.rag.config import settings
 from app.rag.logger import logger
@@ -691,5 +693,50 @@ def adaptive_answer(request: AdaptiveAnswerRequest):
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
             "Adaptive answer endpoint completed in %.2f ms.",
+            elapsed_ms,
+        )
+
+
+@app.post(
+    "/visual-answer",
+    response_model=VisualAnswerResponse,
+)
+def visual_answer(request: VisualAnswerRequest):
+    start_time = time.perf_counter()
+
+    try:
+        result = rag_service.generate_visual_answer(
+            query=request.query,
+        )
+
+        return VisualAnswerResponse(
+            query=result.query,
+            visual_type=result.visual_type.value,
+            title=result.title,
+            description=result.description,
+            data=[item.model_dump() for item in result.data],
+            elements=[item.model_dump() for item in result.elements],
+            edges=[item.model_dump() for item in result.edges],
+            sources=result.sources,
+        )
+
+    except ValueError as error:
+        logger.exception("Visual answer generation failed.")
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception("Visual answer generation failed.")
+        raise HTTPException(
+            status_code=500,
+            detail="Visual answer generation failed.",
+        ) from error
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "Visual answer endpoint completed in %.2f ms.",
             elapsed_ms,
         )

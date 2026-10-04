@@ -216,3 +216,21 @@ def test_adaptive_answer_rejects_empty_query():
     )
 
     assert response.status_code == 422
+
+
+def test_visual_answer_rejects_empty_query():
+    response = client.post(
+        "/visual-answer",
+        json={"query": ""},
+    )
+
+    assert response.status_code == 422
+
+
+def test_visual_answer_rejects_missing_query():
+    response = client.post(
+        "/visual-answer",
+        json={},
+    )
+
+    assert response.status_code == 422
