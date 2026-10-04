@@ -226,6 +226,19 @@ def test_falls_back_in_order_and_forwards_system():
     assert a.calls == 1 and b.last_args == ("q", "sys")
 
 
+def test_structured_generation_falls_back_in_order():
+    a = ScriptedProvider("a", LLMError(ErrorKind.TRANSIENT, "down"))
+    b = ScriptedProvider("b", "from b")
+
+    r = make(a, b).generate_structured("q", "sys")
+
+    assert r.success
+    assert r.provider == "b"
+    assert r.answer == "from b"
+    assert a.calls == 1
+    assert b.last_args == ("q", "sys")
+
+
 def test_benched_provider_is_skipped_on_next_request():
     a = ScriptedProvider("a", LLMError(ErrorKind.RATE_LIMIT, "429"))
     b = ScriptedProvider("b", "ok")
