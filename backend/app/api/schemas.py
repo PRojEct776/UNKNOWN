@@ -189,6 +189,23 @@ class KnowledgeDNAResponse(BaseModel):
     sources: list[dict]
 
 
+class KnowledgeMindMapRequest(BaseModel):
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Research topic for knowledge mind-map generation.",
+    )
+
+
+class KnowledgeMindMapResponse(BaseModel):
+    query: str
+    research_area: str
+    nodes: list[dict]
+    edges: list[dict]
+    sources: list[dict]
+
+
 class ComparisonValueResponse(BaseModel):
     entity: str
     value: str

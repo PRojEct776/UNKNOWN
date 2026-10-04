@@ -18,6 +18,8 @@ from app.api.schemas import (
     DebateResponse,
     KnowledgeDNARequest,
     KnowledgeDNAResponse,
+    KnowledgeMindMapRequest,
+    KnowledgeMindMapResponse,
     QueryRequest,
     QueryResponse,
     ResearchComparisonRequest,
@@ -580,5 +582,73 @@ def knowledge_dna(request: KnowledgeDNARequest):
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
             "Knowledge DNA endpoint completed in %.2f ms.",
+            elapsed_ms,
+        )
+
+
+@app.post(
+    "/knowledge-mind-map",
+    response_model=KnowledgeMindMapResponse,
+)
+def knowledge_mind_map(request: KnowledgeMindMapRequest):
+    start_time = time.perf_counter()
+
+    try:
+        report = rag_service.generate_knowledge_mind_map(  # type: ignore
+            query=request.query,
+        )
+
+        return KnowledgeMindMapResponse(
+            query=report.query,
+            research_area=report.research_area,
+            nodes=[node.model_dump() for node in report.nodes],
+            edges=[edge.model_dump() for edge in report.edges],
+            sources=report.sources,
+        )
+
+    except Exception as error:
+        logger.exception("Knowledge mind map generation failed.")
+
+        error_kind = getattr(error, "error_kind", None)
+
+        if error_kind == "rate_limit":
+            raise HTTPException(
+                status_code=429,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "transient":
+            raise HTTPException(
+                status_code=503,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "invalid_request":
+            raise HTTPException(
+                status_code=400,
+                detail=str(error),
+            ) from error
+
+        if error_kind == "fatal":
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        if isinstance(error, ValueError):
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
+
+        raise HTTPException(
+            status_code=500,
+            detail="Knowledge mind map generation failed.",
+        ) from error
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            "Knowledge mind map endpoint completed in %.2f ms.",
             elapsed_ms,
         )

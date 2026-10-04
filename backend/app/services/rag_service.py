@@ -38,6 +38,7 @@ from app.rag.debate_engine import DebateEngine
 from app.rag.evidence import build_evidence
 from app.rag.hybrid_search import HybridSearch
 from app.rag.knowledge_dna import KnowledgeDNA
+from app.rag.knowledge_mind_map import KnowledgeMindMapEngine
 from app.rag.logger import logger
 from app.rag.prompt_engine import (
     PromptEngine,
@@ -75,6 +76,8 @@ class RAGService:
         self.debate_engine = DebateEngine()
 
         self.knowledge_dna = KnowledgeDNA()
+
+        self.knowledge_mind_map = KnowledgeMindMapEngine()
 
         # ==================================================
         # UNIQUE UNKNOWN FEATURES
@@ -598,6 +601,29 @@ def generate_knowledge_dna(self, query: str):
         raise error
 
     return self.knowledge_dna.parse_response(
+        query=query,
+        response_text=response.answer,
+    )
+
+
+def generate_knowledge_mind_map(self, query: str):
+    results = self.retriever.search(query)
+
+    evidence = self._build_feature_evidence(results)
+
+    prompt = self.knowledge_mind_map.build_mind_map_prompt(
+        query=query,
+        evidence=evidence,
+    )
+
+    response = self.llm.generate_structured(prompt)
+
+    if not response.success:
+        error = RuntimeError(response.error or "Knowledge mind map generation failed.")
+        error.error_kind = response.error_kind  # type: ignore
+        raise error
+
+    return self.knowledge_mind_map.parse_response(
         query=query,
         response_text=response.answer,
     )
