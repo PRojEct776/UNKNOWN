@@ -155,14 +155,6 @@ class GeminiProvider(BaseProvider):
 
         raise self._empty_error(response)
 
-    def generate_structured(
-        self,
-        prompt: str,
-        system: str | None = None,
-    ) -> str:
-        """Generate a structured JSON response using Gemini's native JSON mode."""
-        return self._call_structured(prompt, system)
-
     @staticmethod
     def _empty_error(response: Any) -> LLMError:
         block = getattr(
