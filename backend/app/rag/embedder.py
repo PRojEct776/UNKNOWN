@@ -1,69 +1,145 @@
 """
-Embedding Model Loader for UNKNOWN
+UNKNOWN - Embedding Model Loader
 
-This module loads the embedding model only once (Singleton Pattern)
-and provides helper functions for generating embeddings for
-queries and document chunks.
+Provides a singleton SentenceTransformer embedding model for
+semantic retrieval.
+
+Model:
+    sentence-transformers/all-MiniLM-L6-v2
+
+Embedding dimension:
+    384
+
+The same model must be used for both document and query embeddings
+so that FAISS similarity search operates in the same vector space.
 """
 
+from __future__ import annotations
+
+import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from app.rag.config import settings
 from app.rag.logger import logger
 
-# Singleton instance of the embedding model
-_embedding_model = None
+# ================================================================
+# EMBEDDING MODEL
+# ================================================================
+
+_embedding_model: SentenceTransformer | None = None
 
 
-def get_embedding_model():
+def get_embedding_model() -> SentenceTransformer:
     """
-    Load the embedding model once and reuse it across the application.
+    Load the embedding model once and reuse it.
+
+    Returns:
+        SentenceTransformer: Singleton embedding model.
     """
+
     global _embedding_model
 
     if _embedding_model is None:
         logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL}")
 
-        _embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
+        _embedding_model = SentenceTransformer(
+            settings.EMBEDDING_MODEL,
+            device="cpu",
+        )
 
         logger.info("Embedding model loaded successfully.")
 
     return _embedding_model
 
 
-def embed_text(text: str):
+# ================================================================
+# SINGLE TEXT EMBEDDING
+# ================================================================
+
+
+def embed_text(text: str) -> np.ndarray:
     """
-    Generate a normalized embedding for a single query or document text.
+    Generate a normalized embedding for a single text.
 
     Args:
-        text (str): Input query or document text.
+        text: Input text.
 
     Returns:
-        numpy.ndarray: 384-dimensional normalized embedding vector.
+        numpy.ndarray:
+            Normalized embedding vector.
+
+    For all-MiniLM-L6-v2:
+        Shape = (384,)
     """
+
+    if not isinstance(text, str):
+        raise TypeError(f"text must be str, got {type(text).__name__}")
+
+    if not text.strip():
+        raise ValueError("text must not be empty")
+
     model = get_embedding_model()
 
-    return model.encode(text, normalize_embeddings=True)
+    embedding = model.encode(
+        text,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+    )
+
+    return np.asarray(embedding, dtype=np.float32)
 
 
-def embed_texts(texts: list[str]):
+# ================================================================
+# BATCH EMBEDDINGS
+# ================================================================
+
+
+def embed_texts(texts: list[str]) -> np.ndarray:
     """
-    Generate normalized embeddings for multiple texts in a batch.
+    Generate normalized embeddings for multiple texts.
 
     Args:
-        texts (list[str]): List of document chunks.
+        texts: List of input strings.
 
     Returns:
-        numpy.ndarray: Batch of normalized embedding vectors.
+        numpy.ndarray:
+            Shape = (number_of_texts, 384)
     """
+
+    if not isinstance(texts, list):
+        raise TypeError(f"texts must be list[str], got {type(texts).__name__}")
+
+    if not all(isinstance(text, str) for text in texts):
+        raise TypeError("texts must contain only strings")
+
+    if not texts:
+        return np.empty(
+            (0, 384),
+            dtype=np.float32,
+        )
+
+    if any(not text.strip() for text in texts):
+        raise ValueError("texts must not contain empty strings")
+
     model = get_embedding_model()
 
-    return model.encode(
-        texts, normalize_embeddings=True, batch_size=32, show_progress_bar=False
+    embeddings = model.encode(
+        texts,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+        batch_size=32,
+        show_progress_bar=False,
+    )
+
+    return np.asarray(
+        embeddings,
+        dtype=np.float32,
     )
 
 
-# ---------------------- TEST BLOCK ---------------------- #
+# ================================================================
+# TEST BLOCK
+# ================================================================
 
 if __name__ == "__main__":
 
@@ -71,9 +147,13 @@ if __name__ == "__main__":
 
     embedding = embed_text(sample_query)
 
-    print("\n========== EMBEDDER TEST ==========")
-    print(f"Model Used      : {settings.EMBEDDING_MODEL}")
-    print(f"Sample Query    : {sample_query}")
-    print(f"Embedding Shape : {embedding.shape}")
-    print(f"First 5 Values  : {embedding[:5]}")
+    norm = float(np.linalg.norm(embedding))
+
+    print()
+    print("========== EMBEDDER TEST ==========")
+    print(f"Model Used      : " f"{settings.EMBEDDING_MODEL}")
+    print(f"Sample Query    : " f"{sample_query}")
+    print(f"Embedding Shape : " f"{embedding.shape}")
+    print(f"Embedding Norm  : " f"{norm:.6f}")
+    print(f"First 5 Values  : " f"{embedding[:5]}")
     print("===================================")

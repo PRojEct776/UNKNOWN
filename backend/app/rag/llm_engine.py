@@ -18,12 +18,12 @@ class GeminiEngine:
     """Gemini wrapper for UNKNOWN X."""
 
     def __init__(self):
-        if not settings.GEMINI_API_KEY:  # type: ignore
-            raise ValueError("GEMINI_API_KEY not found in backend/.env")
+        if not settings.GOOGLE_API_KEY:  # type: ignore
+            raise ValueError("GOOGLE_API_KEY not found in backend/.env")
 
         # Create reusable Gemini client
         self.client = genai.Client(
-            api_key=settings.GEMINI_API_KEY,  # type: ignore
+            api_key=settings.GOOGLE_API_KEY,  # type: ignore
             http_options=types.HttpOptions(timeout=60000),  # 60 seconds
         )
 

@@ -1,22 +1,41 @@
 """
+
 UNKNOWN X v2.3+ - RAG Service
+
+
 
 Production application service connecting:
 
+
+
 Query
+
 → Query Understanding
+
 → Hybrid Retrieval
+
 → Evidence Trail
+
 → Context Builder
+
 → Prompt Engine
+
 → Multi-LLM Orchestrator
+
 → Document IQ
+
 → API Response
 
+
+
 Additional capabilities:
+
 → Claim Verification
+
 → Contradiction Finder
+
 → Research Comparison
+
 """
 
 from app.api.schemas import (
@@ -41,6 +60,7 @@ from app.rag.evidence import build_evidence
 from app.rag.hybrid_search import HybridSearch
 from app.rag.knowledge_dna import KnowledgeDNA
 from app.rag.knowledge_mind_map import KnowledgeMindMapEngine
+from app.rag.llm_engine import GeminiEngine
 from app.rag.logger import logger
 from app.rag.prompt_engine import (
     PromptEngine,
@@ -52,6 +72,7 @@ from app.rag.research_comparison import ResearchComparisonEngine
 from app.rag.research_gap_finder import ResearchGapFinder
 from app.rag.scoring import calculate_document_iq
 from app.rag.visual_answer import VisualAnswerEngine
+from app.reasoning.reasoning_engine import ReasoningEngine
 from app.services.document_service import (
     build_document_metadata,
     save_document_metadata,
@@ -62,10 +83,13 @@ class RAGService:
     """Application service for the UNKNOWN X RAG pipeline."""
 
     def __init__(self):
+
         logger.info("Initializing UNKNOWN X RAG Service...")
 
         # ==================================================
+
         # CORE RAG COMPONENTS
+
         # ==================================================
 
         self.query_understanding = QueryUnderstanding()
@@ -78,6 +102,19 @@ class RAGService:
 
         self.prompt_engine = PromptEngine()
 
+        self.gemini = GeminiEngine()
+
+        self.llm = get_orchestrator()
+
+        self.reasoning_engine = ReasoningEngine(
+            retriever=self.retriever,
+            context_builder=self.context_builder,
+            prompt_engine=self.prompt_engine,
+            llm=self.llm,
+            max_subquestions=3,
+            top_k=5,
+        )
+
         self.debate_engine = DebateEngine()
 
         self.knowledge_dna = KnowledgeDNA()
@@ -89,7 +126,9 @@ class RAGService:
         self.visual_answer = VisualAnswerEngine()
 
         # ==================================================
+
         # UNIQUE UNKNOWN FEATURES
+
         # ==================================================
 
         self.claim_verifier = ClaimVerifier()
@@ -101,15 +140,17 @@ class RAGService:
         self.research_gap_finder = ResearchGapFinder()
 
         # ==================================================
-        # MULTI-LLM ORCHESTRATOR
-        # ==================================================
 
-        self.llm = get_orchestrator()
+        # MULTI-LLM ORCHESTRATOR
+
+        # ==================================================
 
         logger.info("UNKNOWN X RAG Service initialized successfully.")
 
     # ======================================================
+
     # QUERY TYPE MAPPING
+
     # ======================================================
 
     @staticmethod
@@ -117,32 +158,42 @@ class RAGService:
         query_type: BhagyaQueryType,
     ) -> PromptQueryType:
         """
+
         Convert Query Understanding QueryType
+
         into PromptEngine QueryType.
+
         """
 
         try:
+
             return PromptQueryType[query_type.name]
 
         except KeyError as error:
+
             raise ValueError(f"Unsupported query type: {query_type}") from error
 
     def determine_answer_mode(self, query: str):
         """Determine the appropriate answer mode for a user query."""
 
         if not query or not query.strip():
+
             raise ValueError("Query must not be empty.")
 
         return self.adaptive_answer.classify_query(query)
 
     # ======================================================
+
     # SOURCE FORMATTER
+
     # ======================================================
 
     @staticmethod
     def _build_sources(results) -> list[Source]:
         """
+
         Convert retrieval results into API Source objects.
+
         """
 
         return [
@@ -186,14 +237,19 @@ class RAGService:
         ]
 
     # ======================================================
+
     # EVIDENCE FORMATTER
+
     # ======================================================
 
     @staticmethod
     def _build_feature_evidence(results) -> list[dict]:
         """
+
         Convert retrieval results into evidence objects
+
         used by advanced RAG features.
+
         """
 
         return [
@@ -219,7 +275,9 @@ class RAGService:
         ]
 
     # ======================================================
+
     # MAIN RAG QUERY
+
     # ======================================================
 
     def query(
@@ -227,13 +285,17 @@ class RAGService:
         user_query: str,
     ) -> QueryResponse:
         """
+
         Execute the complete UNKNOWN X RAG pipeline.
+
         """
 
         logger.info(f"Processing query: {user_query}")
 
         # ==================================================
+
         # 1. QUERY UNDERSTANDING
+
         # ==================================================
 
         understanding = self.query_understanding.analyze(user_query)
@@ -245,7 +307,58 @@ class RAGService:
         logger.info(f"Query Type: {query_type.value}")
 
         # ==================================================
+        # REASONING ROUTE
+        # ==================================================
+
+        if query_type == PromptQueryType.REASONING:
+            logger.info("Routing query to Srinidhi's ReasoningEngine.")
+
+            try:
+                reasoning_result = self.reasoning_engine.reason(normalized_query)
+
+                sources = [
+                    Source(
+                        rank=source.get("rank", 0),
+                        document=source.get("document", "Unknown"),
+                        page=source.get("page", "N/A"),
+                        chunk_id=source.get("chunk_id", "N/A"),
+                        hybrid_score=float(source.get("hybrid_score", 0.0)),
+                        bm25_score=float(source.get("bm25_score", 0.0)),
+                        faiss_score=float(source.get("faiss_score", 0.0)),
+                    )
+                    for source in reasoning_result.get("sources", [])
+                ]
+
+                return QueryResponse(
+                    query=normalized_query,
+                    query_type=query_type.value,
+                    answer=reasoning_result.get(
+                        "answer",
+                        "The retrieved context does not contain enough information.",
+                    ),
+                    sources=sources,
+                )
+
+            except Exception as exc:
+                logger.exception(
+                    "Srinidhi ReasoningEngine failed: %s",
+                    exc,
+                )
+
+                return QueryResponse(
+                    query=normalized_query,
+                    query_type=query_type.value,
+                    answer=(
+                        "The reasoning engine could not complete this query "
+                        "because an internal reasoning error occurred."
+                    ),
+                    sources=[],
+                )
+
+        # ==================================================
+
         # 2. HYBRID RETRIEVAL
+
         # ==================================================
 
         results = self.retriever.search(normalized_query)
@@ -253,7 +366,9 @@ class RAGService:
         logger.info(f"Retrieved {len(results)} chunks.")
 
         # ==================================================
+
         # 3. EVIDENCE TRAIL
+
         # ==================================================
 
         evidence = build_evidence(results)
@@ -261,7 +376,9 @@ class RAGService:
         logger.info(f"Evidence generated for {len(evidence)} chunks.")
 
         # ==================================================
+
         # 4. DOCUMENT IQ
+
         # ==================================================
 
         processed_documents = set()
@@ -274,6 +391,7 @@ class RAGService:
             )
 
             if document_name in processed_documents:
+
                 continue
 
             try:
@@ -293,18 +411,23 @@ class RAGService:
                 )
 
             except Exception as error:  # noqa: BLE001
+
                 logger.warning(f"Document IQ failed for " f"{document_name}: {error}")
 
             processed_documents.add(document_name)
 
         # ==================================================
+
         # 5. CONTEXT BUILDING
+
         # ==================================================
 
         context = self.context_builder.build(results)
 
         # ==================================================
+
         # 6. PROMPT GENERATION
+
         # ==================================================
 
         prompt = self.prompt_engine.build_prompt(
@@ -314,7 +437,9 @@ class RAGService:
         )
 
         # ==================================================
+
         # 7. MULTI-LLM GENERATION
+
         # ==================================================
 
         response = self.llm.generate(prompt)
@@ -330,7 +455,9 @@ class RAGService:
         answer = response.answer
 
         # ==================================================
+
         # 8. SOURCE FORMATTING
+
         # ==================================================
 
         sources = self._build_sources(results)
@@ -338,7 +465,9 @@ class RAGService:
         logger.info("Pipeline completed successfully " f"with {len(sources)} sources.")
 
         # ==================================================
+
         # 9. API RESPONSE
+
         # ==================================================
 
         return QueryResponse(
@@ -349,16 +478,22 @@ class RAGService:
         )
 
     # ======================================================
+
     # CONCEPT DISCOVERY
+
     # ======================================================
 
     def discover_concept(self, description: str):
         """
+
         Identify an unknown technical concept from a user's
+
         natural-language description using retrieved evidence.
+
         """
 
         if not description or not description.strip():
+
             raise ValueError("Description must not be empty.")
 
         logger.info(f"Running concept discovery: {description}")
@@ -369,6 +504,7 @@ class RAGService:
         )
 
         if not results:
+
             raise ValueError("No relevant evidence was found for concept discovery.")
 
         logger.info(f"Retrieved {len(results)} chunks for concept discovery.")
@@ -385,8 +521,11 @@ class RAGService:
         response = self.llm.generate_structured(prompt)
 
         if not response.success:
+
             error = RuntimeError(response.error or "Concept discovery failed.")
+
             error.error_kind = response.error_kind  # type: ignore
+
             raise error
 
         result = self.concept_discovery.parse_response(
@@ -403,7 +542,9 @@ class RAGService:
         return result
 
     # ======================================================
+
     # CLAIM VERIFICATION
+
     # ======================================================
 
     def verify_claim(
@@ -411,14 +552,19 @@ class RAGService:
         claim: str,
     ) -> ClaimVerificationResponse:
         """
+
         Verify a user-provided claim against
+
         retrieved document evidence.
+
         """
 
         logger.info(f"Verifying claim: {claim}")
 
         # ==================================================
+
         # 1. RETRIEVE EVIDENCE
+
         # ==================================================
 
         results = self.retriever.search(claim)
@@ -426,13 +572,17 @@ class RAGService:
         logger.info(f"Retrieved {len(results)} chunks " f"for claim verification.")
 
         # ==================================================
+
         # 2. BUILD CONTEXT
+
         # ==================================================
 
         context = self.context_builder.build(results)
 
         # ==================================================
+
         # 3. BUILD VERIFICATION PROMPT
+
         # ==================================================
 
         prompt = self.claim_verifier.build_verification_prompt(
@@ -441,7 +591,9 @@ class RAGService:
         )
 
         # ==================================================
+
         # 4. LLM ANALYSIS
+
         # ==================================================
 
         response = self.llm.generate(prompt)
@@ -455,7 +607,9 @@ class RAGService:
             raise error
 
         # ==================================================
+
         # 5. PARSE VERIFICATION RESULT
+
         # ==================================================
 
         verification = self.claim_verifier.parse_response(
@@ -464,7 +618,9 @@ class RAGService:
         )
 
         # ==================================================
+
         # 6. SOURCES
+
         # ==================================================
 
         sources = self._build_sources(results)
@@ -482,7 +638,9 @@ class RAGService:
         )
 
     # ======================================================
+
     # CONTRADICTION FINDER
+
     # ======================================================
 
     def find_contradictions(
@@ -490,14 +648,19 @@ class RAGService:
         query: str,
     ):
         """
+
         Detect contradictions across retrieved
+
         document evidence.
+
         """
 
         logger.info(f"Running contradiction analysis: {query}")
 
         # ==================================================
+
         # 1. RETRIEVE EVIDENCE
+
         # ==================================================
 
         results = self.retriever.search(query)
@@ -505,13 +668,17 @@ class RAGService:
         logger.info(f"Retrieved {len(results)} chunks " f"for contradiction analysis.")
 
         # ==================================================
+
         # 2. PREPARE EVIDENCE
+
         # ==================================================
 
         evidence = self._build_feature_evidence(results)
 
         # ==================================================
+
         # 3. BUILD PROMPT
+
         # ==================================================
 
         prompt = self.contradiction_finder.build_contradiction_prompt(
@@ -520,7 +687,9 @@ class RAGService:
         )
 
         # ==================================================
+
         # 4. LLM ANALYSIS
+
         # ==================================================
 
         response = self.llm.generate(prompt)
@@ -534,7 +703,9 @@ class RAGService:
             raise error
 
         # ==================================================
+
         # 5. PARSE RESULT
+
         # ==================================================
 
         report = self.contradiction_finder.parse_response(
@@ -551,7 +722,9 @@ class RAGService:
         return report
 
     # ======================================================
+
     # RESEARCH COMPARISON
+
     # ======================================================
 
     def compare_research(
@@ -559,14 +732,19 @@ class RAGService:
         query: str,
     ):
         """
+
         Compare research entities using only
+
         retrieved document evidence.
+
         """
 
         logger.info(f"Running research comparison: {query}")
 
         # ==================================================
+
         # 1. RETRIEVE RELEVANT EVIDENCE
+
         # ==================================================
 
         results = self.retriever.search(query)
@@ -574,13 +752,17 @@ class RAGService:
         logger.info(f"Retrieved {len(results)} chunks " f"for research comparison.")
 
         # ==================================================
+
         # 2. PREPARE EVIDENCE
+
         # ==================================================
 
         evidence = self._build_feature_evidence(results)
 
         # ==================================================
+
         # 3. BUILD COMPARISON PROMPT
+
         # ==================================================
 
         prompt = self.research_comparison.build_comparison_prompt(
@@ -589,7 +771,9 @@ class RAGService:
         )
 
         # ==================================================
+
         # 4. LLM ANALYSIS
+
         # ==================================================
 
         response = self.llm.generate_structured(prompt)
@@ -603,7 +787,9 @@ class RAGService:
             raise error
 
         # ==================================================
+
         # 5. PARSE STRUCTURED RESULT
+
         # ==================================================
 
         report = self.research_comparison.parse_response(
@@ -620,7 +806,9 @@ class RAGService:
         return report
 
     # ======================================================
+
     # AI DEBATE MODE
+
     # ======================================================
 
     def run_debate(
@@ -632,6 +820,7 @@ class RAGService:
         """Generate an evidence-grounded AI debate."""
 
         results = self.retriever.search(query)
+
         evidence = self._build_feature_evidence(results)
 
         prompt = self.debate_engine.build_debate_prompt(
@@ -644,8 +833,11 @@ class RAGService:
         response = self.llm.generate_structured(prompt)
 
         if not response.success:
+
             error = RuntimeError(response.error or "AI debate generation failed.")
+
             error.error_kind = response.error_kind  # type: ignore
+
             raise error
 
         return self.debate_engine.parse_response(
@@ -656,13 +848,16 @@ class RAGService:
         )
 
     # ======================================================
+
     # KNOWLEDGE DNA
+
     # ======================================================
 
     def generate_knowledge_dna(self, query: str):
         """Generate evidence-grounded Knowledge DNA."""
 
         results = self.retriever.search(query)
+
         evidence = self._build_feature_evidence(results)
 
         prompt = self.knowledge_dna.build_dna_prompt(
@@ -673,8 +868,11 @@ class RAGService:
         response = self.llm.generate_structured(prompt)
 
         if not response.success:
+
             error = RuntimeError(response.error or "Knowledge DNA generation failed.")
+
             error.error_kind = response.error_kind  # type: ignore
+
             raise error
 
         return self.knowledge_dna.parse_response(
@@ -683,13 +881,16 @@ class RAGService:
         )
 
     # ======================================================
+
     # KNOWLEDGE MIND MAP
+
     # ======================================================
 
     def generate_knowledge_mind_map(self, query: str):
         """Generate an evidence-grounded knowledge mind map."""
 
         results = self.retriever.search(query)
+
         evidence = self._build_feature_evidence(results)
 
         prompt = self.knowledge_mind_map.build_mind_map_prompt(
@@ -700,10 +901,13 @@ class RAGService:
         response = self.llm.generate_structured(prompt)
 
         if not response.success:
+
             error = RuntimeError(
                 response.error or "Knowledge mind map generation failed."
             )
+
             error.error_kind = response.error_kind  # type: ignore
+
             raise error
 
         return self.knowledge_mind_map.parse_response(
@@ -712,13 +916,16 @@ class RAGService:
         )
 
     # ======================================================
+
     # RESEARCH GAP FINDER
+
     # ======================================================
 
     def find_research_gaps(self, query: str):
         """Identify evidence-grounded research gaps."""
 
         results = self.retriever.search(query)
+
         evidence = self._build_feature_evidence(results)
 
         prompt = self.research_gap_finder.build_gap_prompt(
@@ -729,8 +936,11 @@ class RAGService:
         response = self.llm.generate_structured(prompt)
 
         if not response.success:
+
             error = RuntimeError(response.error or "Research gap detection failed.")
+
             error.error_kind = response.error_kind  # type: ignore
+
             raise error
 
         return self.research_gap_finder.parse_response(
@@ -739,13 +949,16 @@ class RAGService:
         )
 
     # ======================================================
+
     # VISUAL ANSWER GENERATOR
+
     # ======================================================
 
     def generate_visual_answer(self, query: str):
         """Generate an evidence-grounded visual answer specification."""
 
         if not query or not query.strip():
+
             raise ValueError("Query must not be empty.")
 
         retrieval_results = self.retriever.search(
@@ -754,6 +967,7 @@ class RAGService:
         )
 
         if not retrieval_results:
+
             raise ValueError(
                 "No relevant evidence was found for visual answer generation."
             )
@@ -782,8 +996,11 @@ class RAGService:
         )
 
         if not response.success:
+
             error = RuntimeError(response.error or "Visual answer generation failed.")
+
             error.error_kind = response.error_kind  # type: ignore
+
             raise error
 
         return self.visual_answer.parse_response(
