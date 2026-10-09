@@ -44,7 +44,16 @@ class QueryUnderstanding:
         r"\bhow does\b",
         r"\bhow do\b",
         r"\bhow can\b",
+        r"\bhow .* affects?\b",
+        r"\bhow .* impacts?\b",
+        r"\bhow .* influence[sd]?\b",
+        r"\bexplain how\b",
         r"\bexplain why\b",
+        r"\bexplain the effect\b",
+        r"\bexplain the impact\b",
+        r"\bwhat are the limitations\b",
+        r"\bwhat are the consequences\b",
+        r"\bwhat causes\b",
         r"\breason\b",
         r"\bcause\b",
     )
@@ -144,15 +153,16 @@ class QueryUnderstanding:
 
         if self._matches_any(text, self._COMPARISON_PATTERNS):
             return QueryType.COMPARISON
-
+        
         if self._matches_any(text, self._SUMMARY_PATTERNS):
             return QueryType.SUMMARY
 
-        if self._matches_any(text, self._DEFINITION_PATTERNS):
-            return QueryType.DEFINITION
-
+        # Recognize analytical questions before broad definition patterns.
         if self._matches_any(text, self._REASONING_PATTERNS):
             return QueryType.REASONING
+
+        if self._matches_any(text, self._DEFINITION_PATTERNS):
+            return QueryType.DEFINITION
 
         if self._matches_any(text, self._FACT_PATTERNS):
             return QueryType.FACT
