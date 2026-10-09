@@ -97,16 +97,51 @@ Strict rules:
 11. Include source metadata whenever supplied by the evidence.
 12. Keep the visual focused on the user's query.
 
+
 Required JSON structure:
+Return exactly one JSON object with all these top-level fields:
 {{
-  "visual_type": "TABLE",
+  "visual_type": "CONCEPT_MAP",
   "title": "Descriptive title",
-  "description": "Short explanation",
+  "description": "Short explanation grounded in evidence",
   "data": [],
-  "elements": [],
-  "edges": [],
-  "sources": []
+  "elements": [
+    {{
+      "id": "element_1",
+      "label": "Concept explicitly supported by evidence",
+      "description": "Optional short explanation",
+      "evidence": "Exact supporting text from retrieved evidence"
+    }}
+  ],
+  "edges": [
+    {{
+      "source": "element_1",
+      "target": "element_2",
+      "relationship": "Relationship supported by evidence",
+      "evidence": "Exact supporting text from retrieved evidence"
+    }}
+  ],
+  "sources": [
+    {{
+      "document": "Exact document filename",
+      "page": 1,
+      "chunk_id": "Exact chunk ID"
+    }}
+  ]
 }}
+
+Field requirements:
+- Every data item must contain "label", "value", and "evidence".
+- Every element must contain "id", "label", and "evidence".
+- Every edge must contain "source", "target", "relationship", and "evidence".
+- Every evidence value must be supported by the retrieved evidence above.
+- Every edge source and target must match existing element IDs.
+- Copy source metadata exactly as supplied. Never invent missing metadata.
+- Use empty arrays when a section has no supported items.
+- For visual_type "NONE", return empty data, elements, and edges.
+- Do not include Markdown fences, comments, or additional fields.
+</escape>
+
 """.strip()
 
     @staticmethod

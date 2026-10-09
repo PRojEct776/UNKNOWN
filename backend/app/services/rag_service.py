@@ -316,7 +316,9 @@ class RAGService:
             try:
                 reasoning_result = self.reasoning_engine.reason(normalized_query)
 
-                abstention = "The retrieved context does not contain enough information."
+                abstention = (
+                    "The retrieved context does not contain enough information."
+                )
                 answer = reasoning_result.get("answer", abstention).strip()
 
                 if answer.casefold() == abstention.casefold():
@@ -1028,7 +1030,60 @@ class RAGService:
 
             raise error
 
-        return self.visual_answer.parse_response(
-            query=query,
-            response_text=response.answer,
-        )
+        try:
+            return self.visual_answer.parse_response(
+                query=query,
+                response_text=response.answer,
+            )
+        except ValueError as original_error:
+            logger.warning(
+                "Visual answer validation failed; attempting one repair: %s",
+                original_error,
+            )
+
+            repair_prompt = f"""
+You are repairing an invalid visual-answer JSON response.
+
+Return ONLY valid JSON matching the original visual-answer schema.
+
+User query:
+{query}
+
+Original retrieved evidence:
+{evidence}
+
+Previous response:
+{response.answer}
+
+Rules:
+- Use ONLY the original retrieved evidence.
+- Every element must include a non-empty "evidence" field.
+- Every edge must include a non-empty "evidence" field.
+- Every data point must include a non-empty "evidence" field.
+- Evidence must be copied from the retrieved evidence above.
+- Do not invent facts, values, relationships, or citations.
+- Remove any unsupported elements and edges.
+- Every edge must reference existing element IDs.
+- Preserve the original visual type and title when valid.
+- Return the complete corrected JSON object, with no Markdown fences.
+""".strip()
+
+            repair_response = self.llm.generate_structured(
+                prompt=repair_prompt,
+            )
+
+            if not repair_response.success:
+                raise ValueError(
+                    "Visual answer validation failed, and the repair attempt "
+                    "could not generate a valid response."
+                ) from original_error
+
+            try:
+                return self.visual_answer.parse_response(
+                    query=query,
+                    response_text=repair_response.answer,
+                )
+            except ValueError as repair_error:
+                raise ValueError(
+                    "Visual answer remained invalid after one repair attempt."
+                ) from repair_error

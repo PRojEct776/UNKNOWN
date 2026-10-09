@@ -1,7 +1,34 @@
+from dataclasses import dataclass
+
+from _pytest.monkeypatch import MonkeyPatch
+
 from app.rag.visual_answer import (
     VisualAnswerEngine,
     VisualType,
 )
+
+try:
+    from app.rag.service import RAGService  # pyright: ignore[reportMissingImports]
+except ImportError:  # pragma: no cover
+    try:
+        from app.services.rag_service import RAGService
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("RAGService import failed") from exc
+
+try:
+    from app.models.llm import LLMResponse  # pyright: ignore[reportMissingImports]
+except ImportError:  # pragma: no cover
+    try:
+        from app.llm import LLMResponse  # type: ignore
+    except ImportError:  # pragma: no cover
+
+        @dataclass
+        class LLMResponse:
+            answer: str
+            provider: str
+            model: str
+            latency_ms: float
+            success: bool
 
 
 def test_parse_table_visual():
@@ -204,3 +231,68 @@ def test_build_prompt_contains_grounding_rules():
     assert "supplied evidence" in prompt
     assert "BAR_CHART" in prompt
     assert "TABLE" in prompt
+
+
+def test_visual_answer_returns_valid_repaired_response(monkeypatch: MonkeyPatch):
+    service = RAGService()
+
+    valid_response = """
+    {
+        "visual_type": "FLOWCHART",
+        "title": "SAC-RAG",
+        "description": "SAC-RAG uses context compression.",
+        "data": [],
+        "elements": [
+            {
+                "id": "step_1",
+                "label": "Context Compression",
+                "evidence": "SAC-RAG uses context compression."
+            }
+        ],
+        "edges": [],
+        "sources": [
+            {
+                "document": "paper.pdf",
+                "page": 1,
+                "chunk_id": "chunk_1"
+            }
+        ]
+    }
+    """
+
+    class FakeRepairLLM:
+        def __init__(self):
+            self.calls = 0
+
+        def generate_structured(self, prompt, system=None):
+            self.calls += 1
+            return LLMResponse(
+                answer="not valid JSON" if self.calls == 1 else valid_response,
+                provider="fake",
+                model="test",
+                latency_ms=0.0,
+                success=True,
+            )
+
+    fake_llm = FakeRepairLLM()
+    service.llm = fake_llm  # type: ignore
+
+    monkeypatch.setattr(
+        service.retriever,
+        "search",
+        lambda query, top_k=5: [
+            {
+                "document": "paper.pdf",
+                "page": 1,
+                "chunk_id": "chunk_1",
+                "text": "SAC-RAG uses context compression.",
+            }
+        ],
+    )
+
+    result = service.generate_visual_answer("Explain SAC-RAG")
+
+    assert result.visual_type.value == "FLOWCHART"
+    assert len(result.elements) == 1
+    assert result.elements[0].evidence == ("SAC-RAG uses context compression.")
+    assert fake_llm.calls == 2
