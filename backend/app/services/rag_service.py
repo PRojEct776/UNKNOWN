@@ -316,6 +316,18 @@ class RAGService:
             try:
                 reasoning_result = self.reasoning_engine.reason(normalized_query)
 
+                abstention = "The retrieved context does not contain enough information."
+                answer = reasoning_result.get("answer", abstention).strip()
+
+                if answer.casefold() == abstention.casefold():
+                    logger.info("Reasoning abstained; returning no supporting sources.")
+                    return QueryResponse(
+                        query=normalized_query,
+                        query_type=query_type.value,
+                        answer=abstention,
+                        sources=[],
+                    )
+
                 sources = [
                     Source(
                         rank=source.get("rank", 0),
