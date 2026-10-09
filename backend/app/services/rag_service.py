@@ -452,7 +452,20 @@ class RAGService:
 
             raise error
 
-        answer = response.answer
+        answer = response.answer.strip()
+
+        abstention = "The retrieved context does not contain enough information."
+
+        if answer.casefold() == abstention.casefold():
+            logger.info(
+                "Insufficient evidence reported; returning no supporting sources."
+            )
+            return QueryResponse(
+                query=normalized_query,
+                query_type=query_type.value,
+                answer=abstention,
+                sources=[],
+            )
 
         # ==================================================
 
