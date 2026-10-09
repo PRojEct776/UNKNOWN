@@ -135,6 +135,16 @@ class Settings:
         "OPENROUTER_MODEL",
         "openrouter/free",
     )
+
+    # ------------------------------------------------------
+    # Cloudflare Workers AI Configuration
+    # ------------------------------------------------------
+    CLOUDFLARE_ACCOUNT_ID: str = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
+    CLOUDFLARE_API_TOKEN: str = os.getenv("CLOUDFLARE_API_TOKEN", "")
+    CLOUDFLARE_MODEL: str = os.getenv(
+        "CLOUDFLARE_MODEL",
+        "@cf/meta/llama-3.1-8b-instruct-fp8",
+    )
     # ------------------------------------------------------
     # Supported Input Files
     # ------------------------------------------------------
@@ -170,7 +180,13 @@ class Settings:
             if provider.strip()
         }
 
-        supported = {"gemini", "groq", "cohere", "openrouter"}
+        supported = {
+            "gemini",
+            "groq",
+            "cohere",
+            "openrouter",
+            "cloudflare",
+        }
 
         unknown = providers - supported
         if unknown:

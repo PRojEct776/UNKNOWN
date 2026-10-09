@@ -536,6 +536,50 @@ def test_gemini_call_builds_config_with_system_instruction():
     assert seen["config"].max_output_tokens == 77
 
 
+def test_cloudflare_provider_configuration(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.llm import cloudflare_provider
+
+    monkeypatch.setattr(
+        cloudflare_provider,
+        "settings",
+        SimpleNamespace(
+            CLOUDFLARE_ACCOUNT_ID="test-account",
+            CLOUDFLARE_API_TOKEN="test-token",
+            CLOUDFLARE_MODEL="@cf/meta/llama-3.1-8b-instruct-fp8",
+            LLM_TIMEOUT_S=10.0,
+            TEMPERATURE=0.2,
+            MAX_OUTPUT_TOKENS=2048,
+        ),
+    )
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        "app.llm.openai_compat.OpenAI",
+        FakeClient,
+    )
+
+    provider = cloudflare_provider.CloudflareProvider()
+
+    assert provider.provider_name == "cloudflare"
+    assert provider.model == "@cf/meta/llama-3.1-8b-instruct-fp8"
+    assert captured["api_key"] == "test-token"
+    assert captured["base_url"] == (
+        "https://api.cloudflare.com/client/v4/accounts/" "test-account/ai/v1"
+    )
+    assert captured["max_retries"] == 0
+    provider.close()
+
+
 # ==========================================================
 # Runner
 # ==========================================================

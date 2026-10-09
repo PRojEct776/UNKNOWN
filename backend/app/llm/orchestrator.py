@@ -23,6 +23,7 @@ from time import monotonic, perf_counter
 from typing import Any
 
 from app.llm.base_provider import BaseProvider, ErrorKind, LLMResponse
+from app.llm.cloudflare_provider import CloudflareProvider
 from app.llm.cohere_provider import CohereProvider
 from app.llm.gemini_provider import GeminiProvider
 from app.llm.groq_provider import GroqProvider
@@ -39,6 +40,7 @@ _REGISTRY: dict[str, type[BaseProvider]] = {
     "groq": GroqProvider,
     "cohere": CohereProvider,
     "openrouter": OpenRouterProvider,
+    "cloudflare": CloudflareProvider,
 }
 
 
