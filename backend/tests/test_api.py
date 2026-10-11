@@ -234,3 +234,21 @@ def test_visual_answer_rejects_missing_query():
     )
 
     assert response.status_code == 422
+
+
+def test_verify_rejects_query_instead_of_claim():
+    response = client.post("/verify", json={"query": "a claim"})
+
+    assert response.status_code == 422
+
+
+def test_discover_concept_rejects_query_instead_of_description():
+    response = client.post("/discover-concept", json={"query": "a concept"})
+
+    assert response.status_code == 422
+
+
+def test_debate_rejects_query_without_positions():
+    response = client.post("/debate", json={"query": "a debate topic"})
+
+    assert response.status_code == 422
