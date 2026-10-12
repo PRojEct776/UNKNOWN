@@ -209,3 +209,28 @@ def test_invalid_json():
         assert False, "Expected ValueError"
     except ValueError as error:
         assert "invalid JSON" in str(error)
+
+
+def test_parse_response_empty_nodes_and_edges():
+    engine = KnowledgeMindMapEngine()
+
+    response = """
+    {
+      "query": "Unknown query",
+      "research_area": "No relevant area",
+      "nodes": [],
+      "edges": [],
+      "sources": []
+    }
+    """
+
+    report = engine.parse_response(
+        query="Unknown query",
+        response_text=response,
+    )
+
+    assert report.query == "Unknown query"
+    assert report.research_area == "No relevant area"
+    assert report.nodes == []
+    assert report.edges == []
+    assert report.sources == []

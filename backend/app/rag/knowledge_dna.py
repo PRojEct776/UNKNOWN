@@ -169,11 +169,13 @@ Do not manufacture missing metadata.
 
     @staticmethod
     def _extract_json(text: str) -> dict[str, Any]:
+        """Extract a complete JSON object from an LLM response."""
         if not text or not text.strip():
             raise ValueError("Knowledge DNA engine returned an empty response.")
 
         cleaned = text.strip()
 
+        # Remove Markdown code fences when present.
         if cleaned.startswith("```"):
             lines = cleaned.splitlines()
 
@@ -185,23 +187,34 @@ Do not manufacture missing metadata.
 
             cleaned = "\n".join(lines).strip()
 
+        # First try parsing the complete response.
         try:
             value = json.loads(cleaned)
         except json.JSONDecodeError:
-            start = cleaned.find("{")
-            end = cleaned.rfind("}")
+            # Find the first complete JSON object, respecting
+            # quoted strings and escaped characters.
+            decoder = json.JSONDecoder()
+            value = None
+            found = False
 
-            if start == -1 or end == -1 or end <= start:
+            for index, char in enumerate(cleaned):
+                if char != "{":
+                    continue
+
+                try:
+                    candidate, _ = decoder.raw_decode(cleaned[index:])
+                except json.JSONDecodeError:
+                    continue
+
+                if isinstance(candidate, dict):
+                    value = candidate
+                    found = True
+                    break
+
+            if not found:
                 raise ValueError(
                     "Knowledge DNA engine returned invalid JSON."
                 ) from None
-
-            try:
-                value = json.loads(cleaned[start : end + 1])
-            except json.JSONDecodeError as error:
-                raise ValueError(
-                    "Knowledge DNA engine returned invalid JSON."
-                ) from error
 
         if not isinstance(value, dict):
             raise ValueError(  # noqa: TRY004
@@ -215,8 +228,21 @@ Do not manufacture missing metadata.
         if not isinstance(value, dict):
             raise ValueError("Invalid Knowledge DNA signal.")  # noqa: TRY004
 
+        signal_type = str(value.get("type", "")).strip().upper()
+
+        # Normalize generator terminology to the supported schema.
+        if signal_type == "COMPONENT":
+            signal_type = "CONCEPT"
+
+        try:
+            normalized_type = KnowledgeSignalType(signal_type)
+        except ValueError as error:
+            raise ValueError(
+                f"Invalid Knowledge DNA signal type: {signal_type}"
+            ) from error
+
         return KnowledgeSignal(
-            type=value.get("type"),  # type: ignore
+            type=normalized_type,
             name=value.get("name", ""),
             description=value.get("description", ""),
             evidence=value.get("evidence", []),

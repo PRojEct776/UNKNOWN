@@ -147,6 +147,15 @@ class RAGService:
 
         logger.info("UNKNOWN X RAG Service initialized successfully.")
 
+    def reload_retriever(self) -> None:
+        """
+        Reload retrieval engine (BM25 + FAISS) after new documents are indexed.
+        """
+        self.retriever = HybridSearch()
+        self.reasoning_engine.retriever = self.retriever
+        logger.info("RAG Service retriever reloaded successfully.")
+
+
     # ======================================================
 
     # QUERY TYPE MAPPING
@@ -353,7 +362,7 @@ class RAGService:
                     sources=sources,
                 )
 
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.exception(
                     "Srinidhi ReasoningEngine failed: %s",
                     exc,

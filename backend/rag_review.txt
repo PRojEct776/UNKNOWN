@@ -1,0 +1,410 @@
+diff --git a/backend/app/rag/knowledge_dna.py b/backend/app/rag/knowledge_dna.py
+index b5ce3f7..fc3fc54 100644
+--- a/backend/app/rag/knowledge_dna.py
++++ b/backend/app/rag/knowledge_dna.py
+@@ -169,11 +169,13 @@ Do not manufacture missing metadata.
+ 
+     @staticmethod
+     def _extract_json(text: str) -> dict[str, Any]:
++        """Extract a complete JSON object from an LLM response."""
+         if not text or not text.strip():
+             raise ValueError("Knowledge DNA engine returned an empty response.")
+ 
+         cleaned = text.strip()
+ 
++        # Remove Markdown code fences when present.
+         if cleaned.startswith("```"):
+             lines = cleaned.splitlines()
+ 
+@@ -185,24 +187,35 @@ Do not manufacture missing metadata.
+ 
+             cleaned = "\n".join(lines).strip()
+ 
++        # First try parsing the complete response.
+         try:
+             value = json.loads(cleaned)
+         except json.JSONDecodeError:
+-            start = cleaned.find("{")
+-            end = cleaned.rfind("}")
+-
+-            if start == -1 or end == -1 or end <= start:
++            # Find the first complete JSON object, respecting
++            # quoted strings and escaped characters.
++            decoder = json.JSONDecoder()
++            value = None
++            found = False
++
++            for index, char in enumerate(cleaned):
++                if char != "{":
++                    continue
++
++                try:
++                    candidate, _ = decoder.raw_decode(cleaned[index:])
++                except json.JSONDecodeError:
++                    continue
++
++                if isinstance(candidate, dict):
++                    value = candidate
++                    found = True
++                    break
++
++            if not found:
+                 raise ValueError(
+                     "Knowledge DNA engine returned invalid JSON."
+                 ) from None
+ 
+-            try:
+-                value = json.loads(cleaned[start : end + 1])
+-            except json.JSONDecodeError as error:
+-                raise ValueError(
+-                    "Knowledge DNA engine returned invalid JSON."
+-                ) from error
+-
+         if not isinstance(value, dict):
+             raise ValueError(  # noqa: TRY004
+                 "Knowledge DNA response must be a JSON object."
+@@ -215,8 +228,21 @@ Do not manufacture missing metadata.
+         if not isinstance(value, dict):
+             raise ValueError("Invalid Knowledge DNA signal.")  # noqa: TRY004
+ 
++        signal_type = str(value.get("type", "")).strip().upper()
++
++        # Normalize generator terminology to the supported schema.
++        if signal_type == "COMPONENT":
++            signal_type = "CONCEPT"
++
++        try:
++            normalized_type = KnowledgeSignalType(signal_type)
++        except ValueError as error:
++            raise ValueError(
++                f"Invalid Knowledge DNA signal type: {signal_type}"
++            ) from error
++
+         return KnowledgeSignal(
+-            type=value.get("type"),  # type: ignore
++            type=normalized_type,
+             name=value.get("name", ""),
+             description=value.get("description", ""),
+             evidence=value.get("evidence", []),
+diff --git a/backend/app/rag/knowledge_mind_map.py b/backend/app/rag/knowledge_mind_map.py
+index cbe0672..5659961 100644
+--- a/backend/app/rag/knowledge_mind_map.py
++++ b/backend/app/rag/knowledge_mind_map.py
+@@ -49,7 +49,7 @@ class KnowledgeMindMapEngine:
+     Evidence-grounded knowledge mind-map generator.
+ 
+     Converts retrieved research evidence into nodes and relationships
+-    that can later be rendered as an interactive graph by a frontend.
++    that can be rendered as an interactive graph by a frontend.
+     """
+ 
+     def build_mind_map_prompt(
+@@ -58,106 +58,115 @@ class KnowledgeMindMapEngine:
+         query: str,
+         evidence: list[dict[str, Any]],
+     ) -> str:
++        """Build a compact prompt to reduce input-token consumption."""
++
++        compact_evidence: list[dict[str, Any]] = []
++
++        for item in evidence:
++            if not isinstance(item, dict):
++                continue
++
++            # Preserve the available evidence text and source metadata.
++            text = item.get(
++                "text",
++                item.get(
++                    "content",
++                    item.get("chunk_text", item.get("page_content", "")),
++                ),
++            )
++
++            document = item.get(
++                "document",
++                item.get("document_name", item.get("filename", "")),
++            )
++
++            page = item.get("page", "")
++            chunk_id = item.get("chunk_id", "")
++
++            compact_evidence.append(
++                {
++                    "text": text,
++                    "document": document,
++                    "page": page,
++                    "chunk_id": chunk_id,
++                }
++            )
++
+         evidence_json = json.dumps(
+-            evidence,
++            compact_evidence,
+             ensure_ascii=False,
+-            indent=2,
++            separators=(",", ":"),
++            default=str,
+         )
+ 
+-        return f"""
+-You are the Knowledge Mind Map Engine of UNKNOWN.
+-
+-Your task is to construct an evidence-grounded knowledge graph from
+-the supplied research evidence.
+-
+-RESEARCH QUERY:
+-{query}
+-
+-SUPPLIED EVIDENCE:
+-{evidence_json}
+-
+-STRICT RULES:
+-
+-1. Use ONLY the supplied evidence.
+-2. Do NOT use outside knowledge.
+-3. Do NOT invent concepts, methods, findings, limitations,
+-   documents, pages, chunk IDs, or relationships.
+-4. Every node must be traceable to supplied evidence.
+-5. Every edge must be explicitly supported by supplied evidence.
+-6. Use one of these node types only:
+-   TOPIC, CONCEPT, METHOD, FINDING, LIMITATION, DOCUMENT.
+-7. Node IDs must be unique and stable.
+-8. Keep node labels concise.
+-9. Use relationships such as:
+-   "USES", "SUPPORTS", "RELATES_TO", "LIMITS",
+-   "EVALUATES", "REPORTS", "PART_OF"
+-   only when supported by evidence.
+-10. Do not create relationships merely because two nodes appear
+-    in the same document.
+-11. Confidence values must be between 0 and 1.
+-12. Preserve document, page, and chunk identifiers whenever available.
+-13. If evidence is insufficient, return an empty nodes/edges list.
+-14. Return ONLY valid JSON.
+-15. Do not add Markdown fences.
+-16. Do not add commentary outside the JSON object.
+-
+-EXPECTED JSON STRUCTURE:
++        query_json = json.dumps(query, ensure_ascii=False)
+ 
++        return f"""
++Create an evidence-grounded research mind map using ONLY the evidence below.
++
++QUERY: {query_json}
++EVIDENCE: {evidence_json}
++
++RULES:
++- Do not use outside knowledge or invent facts.
++- Every node and edge must be supported by the evidence.
++- Allowed node types: TOPIC, CONCEPT, METHOD, FINDING, LIMITATION, DOCUMENT.
++- Use concise labels and descriptions.
++- Node IDs must be unique.
++- Every edge source and target must reference an existing node.
++- Preserve document, page, and chunk_id when available.
++- Confidence must be between 0 and 1.
++- Return at most 10 nodes and 12 edges.
++- Do not create relationships merely because nodes share a document.
++- If evidence is insufficient, return empty nodes and edges.
++- Return one valid JSON object only. No Markdown fences or commentary.
++
++EXPECTED JSON:
+ {{
+-  "query": "{query}",
+-  "research_area": "short evidence-grounded research area",
++  "query": {query_json},
++  "research_area": "short evidence-grounded description",
+   "nodes": [
+     {{
+-      "id": "unique_node_id",
+-      "label": "node label",
++      "id": "node_1",
++      "label": "concept",
+       "type": "CONCEPT",
+       "description": "evidence-grounded description",
+-      "evidence": [
+-        "supporting evidence"
+-      ],
+-      "confidence": 0.0,
++      "evidence": ["supporting evidence"],
++      "confidence": 0.9,
+       "document": "document name",
+-      "page": 0,
+-      "chunk_id": "chunk id"
++      "page": 1,
++      "chunk_id": "chunk_1"
+     }}
+   ],
+   "edges": [
+     {{
+-      "source": "source_node_id",
+-      "target": "target_node_id",
+-      "relationship": "relationship",
++      "source": "node_1",
++      "target": "node_2",
++      "relationship": "SUPPORTS",
+       "evidence": "supporting evidence",
+-      "confidence": 0.0
++      "confidence": 0.9
+     }}
+   ],
+   "sources": [
+     {{
+       "document": "document name",
+-      "page": 0,
+-      "chunk_id": "chunk id"
++      "page": 1,
++      "chunk_id": "chunk_1"
+     }}
+   ]
+ }}
+-
+-IMPORTANT:
+-
+-The mind map represents ONLY the supplied research evidence.
+-
+-Do not manufacture missing metadata.
+-
+-Do not create unsupported relationships.
+-
+-If the evidence does not support a meaningful graph, return empty
+-nodes and edges instead of guessing.
+ """.strip()
+ 
+     @staticmethod
+     def _extract_json(text: str) -> dict[str, Any]:
++        """Extract one JSON object, including when surrounded by extra text."""
++
+         if not text or not text.strip():
+             raise ValueError("Knowledge mind map engine returned an empty response.")
+ 
+         cleaned = text.strip()
+ 
++        # Remove Markdown code fences if the provider includes them.
+         if cleaned.startswith("```"):
+             lines = cleaned.splitlines()
+ 
+@@ -169,23 +178,31 @@ nodes and edges instead of guessing.
+ 
+             cleaned = "\n".join(lines).strip()
+ 
++        # First, try parsing the entire response.
+         try:
+             value = json.loads(cleaned)
+         except json.JSONDecodeError:
+-            start = cleaned.find("{")
+-            end = cleaned.rfind("}")
++            # Then scan for the first complete JSON object.
++            decoder = json.JSONDecoder()
++            value = None
+ 
+-            if start == -1 or end == -1 or end <= start:
+-                raise ValueError(
+-                    "Knowledge mind map engine returned invalid JSON."
+-                ) from None
++            for index, character in enumerate(cleaned):
++                if character != "{":
++                    continue
+ 
+-            try:
+-                value = json.loads(cleaned[start : end + 1])
+-            except json.JSONDecodeError as error:
++                try:
++                    candidate, _ = decoder.raw_decode(cleaned[index:])
++                except json.JSONDecodeError:
++                    continue
++
++                if isinstance(candidate, dict):
++                    value = candidate
++                    break
++
++            if value is None:
+                 raise ValueError(
+                     "Knowledge mind map engine returned invalid JSON."
+-                ) from error
++                ) from None
+ 
+         if not isinstance(value, dict):
+             raise ValueError(  # noqa: TRY004
+@@ -251,32 +268,43 @@ nodes and edges instead of guessing.
+         query: str,
+         response_text: str,
+     ) -> KnowledgeMindMap:
++        """Validate the generated JSON and ensure all edge references exist."""
++
+         payload = self._extract_json(response_text)
+ 
+-        nodes = [self._parse_node(item) for item in payload.get("nodes", [])]
++        raw_nodes = payload.get("nodes", [])
++        raw_edges = payload.get("edges", [])
++
++        if not isinstance(raw_nodes, list):
++            raise ValueError("Mind map nodes must be a list.")  # noqa: TRY004
++
++        if not isinstance(raw_edges, list):
++            raise ValueError("Mind map edges must be a list.")  # noqa: TRY004
++
++        nodes = [self._parse_node(item) for item in raw_nodes]
++        edges = [self._parse_edge(item) for item in raw_edges]
++
++        node_ids = [node.id for node in nodes]
+ 
+-        edges = [self._parse_edge(item) for item in payload.get("edges", [])]
++        if len(node_ids) != len(set(node_ids)):
++            raise ValueError("Mind map contains duplicate node IDs.")
+ 
+-        node_ids = {node.id for node in nodes}
++        valid_node_ids = set(node_ids)
+ 
+-        # Reject edges that point to nodes which do not exist.
+         for edge in edges:
+-            if edge.source not in node_ids:
++            if edge.source not in valid_node_ids:
+                 raise ValueError(
+                     f"Mind map edge references unknown source node: " f"{edge.source}"
+                 )
+ 
+-            if edge.target not in node_ids:
++            if edge.target not in valid_node_ids:
+                 raise ValueError(
+                     f"Mind map edge references unknown target node: " f"{edge.target}"
+                 )
+ 
+         return KnowledgeMindMap(
+             query=query,
+-            research_area=payload.get(
+-                "research_area",
+-                query,
+-            ),
++            research_area=payload.get("research_area", query),
+             nodes=nodes,
+             edges=edges,
+             sources=self._parse_sources(payload.get("sources", [])),
+diff --git a/backend/tests/test_knowledge_dna.py b/backend/tests/test_knowledge_dna.py
+index e48b44f..6f72967 100644
+--- a/backend/tests/test_knowledge_dna.py
++++ b/backend/tests/test_knowledge_dna.py
+@@ -112,6 +112,25 @@ def test_signal_type():
+     assert report.signals[1].type == KnowledgeSignalType.FINDING
+ 
+ 
++def test_component_signal_type_is_normalized():
++    dna = KnowledgeDNA()
++
++    signal = dna._parse_signal(
++        {
++            "type": "COMPONENT",
++            "name": "Adaptive retrieval",
++            "description": "A retrieval component",
++            "evidence": ["Evidence from the paper"],
++            "confidence": 0.9,
++            "document": "sample_ieee.pdf",
++            "page": 4,
++            "chunk_id": "chunk_004",
++        }
++    )
++
++    assert signal.type == KnowledgeSignalType.CONCEPT
++
++
+ def test_signal_traceability():
+     engine = KnowledgeDNA()
+ 

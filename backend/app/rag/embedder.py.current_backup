@@ -1,0 +1,122 @@
+"""
+Embedding Model Loader for UNKNOWN
+
+Uses SentenceTransformers with the existing
+sentence-transformers/all-MiniLM-L6-v2 model.
+
+Compatibility note:
+Some Windows environments have Application Control policies
+that block scikit-learn native DLLs. Transformers may probe
+scikit-learn while importing generation utilities even though
+embedding inference does not need sklearn.
+
+To keep the existing UNKNOWN embedding pipeline unchanged,
+we temporarily disable only Transformers' sklearn-availability
+check during SentenceTransformer import.
+
+The actual sklearn package remains installed and untouched.
+"""
+
+# ------------------------------------------------------------------
+# Transformers / sklearn compatibility shim
+# ------------------------------------------------------------------
+
+import transformers.utils as _transformers_utils
+import transformers.utils.import_utils as _transformers_import_utils
+
+_original_import_utils_sklearn_check = _transformers_import_utils.is_sklearn_available
+
+_original_utils_sklearn_check = _transformers_utils.is_sklearn_available  # type: ignore
+
+try:
+    # Prevent Transformers' optional generation code from importing
+    # the blocked sklearn native extension during initialization.
+    _transformers_import_utils.is_sklearn_available = lambda: False
+    _transformers_utils.is_sklearn_available = lambda: False  # type: ignore
+
+    from sentence_transformers import SentenceTransformer
+
+finally:
+    # Restore the original functions for the rest of the application.
+    _transformers_import_utils.is_sklearn_available = (
+        _original_import_utils_sklearn_check
+    )
+
+    _transformers_utils.is_sklearn_available = _original_utils_sklearn_check  # type: ignore
+
+
+from app.rag.config import settings
+from app.rag.logger import logger
+
+# Singleton instance of the embedding model
+_embedding_model = None
+
+
+def get_embedding_model():
+    """
+    Load the embedding model once and reuse it.
+    """
+    global _embedding_model
+
+    if _embedding_model is None:
+        logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL}")
+
+        _embedding_model = SentenceTransformer(
+            settings.EMBEDDING_MODEL,
+            device="cpu",
+        )
+
+        logger.info("Embedding model loaded successfully.")
+
+    return _embedding_model
+
+
+def embed_text(text: str):
+    """
+    Generate a normalized embedding for a single query or document text.
+
+    Returns:
+        numpy.ndarray: 384-dimensional normalized embedding vector.
+    """
+    model = get_embedding_model()
+
+    return model.encode(
+        text,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+    )
+
+
+def embed_texts(texts: list[str]):
+    """
+    Generate normalized embeddings for multiple document chunks.
+
+    Returns:
+        numpy.ndarray: Batch of 384-dimensional normalized vectors.
+    """
+    model = get_embedding_model()
+
+    return model.encode(
+        texts,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+        batch_size=32,
+        show_progress_bar=False,
+    )
+
+
+# ---------------------- TEST BLOCK ---------------------- #
+
+if __name__ == "__main__":
+
+    sample_query = "Explain virtualization in cloud computing."
+
+    embedding = embed_text(sample_query)
+
+    print("\n========== EMBEDDER TEST ==========")
+    print(f"Model Used      : {settings.EMBEDDING_MODEL}")
+    print(f"Sample Query    : {sample_query}")
+    print(f"Embedding Shape : {embedding.shape}")
+    print(f"Embedding Norm  : {(embedding ** 2).sum() ** 0.5}")
+    print(f"First 5 Values  : {embedding[:5]}")
+    print("===================================")

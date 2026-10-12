@@ -80,6 +80,59 @@ with st.sidebar:
         st.caption(st.session_state["backend_error"])
 
     st.divider()
+    st.subheader("Document Ingestion")
+    st.caption("Upload PDF, DOCX, or TXT documents to index into the RAG engine.")
+    uploaded_file = st.file_uploader(
+        "Upload research document",
+        type=["pdf", "docx", "txt"],
+        key="doc_file_uploader",
+    )
+    if uploaded_file is not None:
+        if st.button("Upload & Index", use_container_width=True):
+            with st.spinner("Extracting, chunking, and indexing document..."):
+                try:
+                    files = {
+                        "file": (
+                            uploaded_file.name,
+                            uploaded_file.getvalue(),
+                            uploaded_file.type or "application/octet-stream",
+                        )
+                    }
+                    res = requests.post(f"{API_BASE_URL}/documents/upload", files=files, timeout=120)
+                    res.raise_for_status()
+                    data = res.json()
+                    st.success(f"Indexed: {data.get('document')}")
+                    st.caption(
+                        f"Pages: {data.get('total_pages', 1)} · "
+                        f"Chunks: {data.get('document_chunks', 0)} · "
+                        f"IQ Score: {data.get('document_iq', {}).get('iq_score', 'N/A')}"
+                    )
+                except requests.RequestException as exc:
+                    err_msg = str(exc)
+                    if hasattr(exc, "response") and exc.response is not None:
+                        try:
+                            err_msg = exc.response.json().get("detail", err_msg)
+                        except Exception:
+                            pass
+                    st.error(f"Upload failed: {err_msg}")
+
+    with st.expander("Indexed Documents"):
+        try:
+            doc_res = requests.get(f"{API_BASE_URL}/documents", timeout=5)
+            if doc_res.status_code == 200:
+                docs = doc_res.json().get("documents", [])
+                if docs:
+                    for d in docs:
+                        st.markdown(f"**{d.get('title', d.get('document', 'Unknown'))}**")
+                        st.caption(f"Pages: {d.get('pages', 0)} | Chunks: {d.get('chunks', 0)}")
+                else:
+                    st.write("No documents indexed yet.")
+            else:
+                st.write("Unable to fetch document list.")
+        except Exception:
+            st.write("Backend offline.")
+
+    st.divider()
     st.caption(f"API: {API_BASE_URL}")
 
 st.markdown(
@@ -198,16 +251,26 @@ if st.button(
                 else ""
             )
 
-            if (
-                feature == "Research Gaps"
-                and response.status_code == 502
-                and "invalid research gap JSON" in str(detail).lower()
-            ):
-                st.warning(
-                    "A complete research-gap result could not be generated. "
-                    "The provider response was incomplete or invalid. "
-                    "Please try again later."
-                )
+            if response.status_code == 429:
+                st.error("LLM Provider Quota / Rate Limit Exceeded")
+                st.info("The AI provider rate limit was reached. Please wait a moment before trying again.")
+            elif response.status_code == 503:
+                st.error("LLM Providers Temporarily Unavailable")
+                st.info("Upstream LLM services are temporarily offline or unreachable.")
+            elif response.status_code == 502:
+                if (
+                    feature == "Research Gaps"
+                    and "invalid research gap JSON" in str(detail).lower()
+                ):
+                    st.warning(
+                        "A complete research-gap result could not be generated. "
+                        "The provider response was incomplete or invalid. Please try again later."
+                    )
+                else:
+                    st.error("Upstream Generation Failure (HTTP 502)")
+                    st.warning(f"{detail or 'The LLM provider failed to process the request.'}")
+            elif response.status_code == 400:
+                st.error(f"Invalid Request: {detail or 'The request parameters were rejected.'}")
             else:
                 st.error(f"Backend returned HTTP {response.status_code}")
                 if detail:
@@ -227,6 +290,25 @@ if st.button(
 
     except requests.RequestException as exc:
         st.error(f"Could not reach the backend: {exc}")
+
+
+def _render_sources_section(sources: list):
+    st.markdown("### Retrieved Source Evidence")
+    if isinstance(sources, list) and sources:
+        for index, source in enumerate(sources, start=1):
+            if not isinstance(source, dict):
+                with st.expander(f"Source {index}"):
+                    st.write(source)
+                continue
+            doc = source.get("document", "Unknown document")
+            page = source.get("page", "Unknown")
+            chunk_id = source.get("chunk_id", "N/A")
+            with st.container(border=True):
+                st.markdown(f"**{index}. {doc}**")
+                st.caption(f"Page `{page}` · Chunk ID: `{chunk_id}`")
+    else:
+        st.info("No source citations returned for this result.")
+
 
 # Results renderer
 result = st.session_state.get("last_result")
@@ -294,6 +376,197 @@ if result is not None:
             with st.expander("Additional response details"):
                 st.json(other_fields)
 
+    elif last_feature == "Knowledge Mind Map" and isinstance(result, dict):
+        query = result.get("query", "")
+        area = result.get("research_area", "")
+        nodes = result.get("nodes", [])
+        edges = result.get("edges", [])
+        sources = result.get("sources", [])
+
+        st.markdown(f"**Research Area:** {area}")
+
+        if not nodes:
+            st.info(
+                "No concepts or relationships could be identified from the retrieved "
+                "evidence for this query. The graph is currently empty."
+            )
+        else:
+            color_map = {
+                "TOPIC": "#dbeafe",
+                "CONCEPT": "#dcfce7",
+                "METHOD": "#fef3c7",
+                "FINDING": "#f3e8ff",
+                "LIMITATION": "#fee2e2",
+                "DOCUMENT": "#f1f5f9",
+            }
+            lines = [
+                "digraph MindMap {",
+                "  rankdir=LR;",
+                '  node [shape=box, style="rounded,filled", fontname="sans-serif", margin="0.2,0.1"];',
+                '  edge [fontname="sans-serif", fontsize=10];',
+            ]
+            for node in nodes:
+                nid = str(node.get("id", "")).replace('"', '')
+                lbl = str(node.get("label", nid)).replace('"', '\\"')
+                ntype = str(node.get("type", "CONCEPT")).upper()
+                bg = color_map.get(ntype, "#e2e8f0")
+                lines.append(f'  "{nid}" [label="{lbl}\\n[{ntype}]", fillcolor="{bg}"];')
+            for edge in edges:
+                src = str(edge.get("source", "")).replace('"', '')
+                tgt = str(edge.get("target", "")).replace('"', '')
+                rel = str(edge.get("relationship", "")).replace('"', '\\"')
+                lines.append(f'  "{src}" -> "{tgt}" [label="{rel}"];')
+            lines.append("}")
+
+            st.markdown("### Interactive Mind Map Graph")
+            st.graphviz_chart("\n".join(lines), use_container_width=True)
+
+            st.markdown("### Graph Nodes")
+            for node in nodes:
+                with st.expander(f"{node.get('label', node.get('id'))} [{node.get('type')}]"):
+                    st.write(node.get("description", "No description available."))
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Confidence", f"{float(node.get('confidence', 0)):.2f}")
+                    c2.write(f"**Document:** {node.get('document', 'N/A')}")
+                    c3.write(f"**Page / Chunk:** {node.get('page', 'N/A')} / `{node.get('chunk_id', 'N/A')}`")
+                    ev = node.get("evidence", [])
+                    if ev:
+                        st.caption("**Evidence:** " + "; ".join(ev if isinstance(ev, list) else [str(ev)]))
+
+            if edges:
+                st.markdown("### Relationships")
+                edge_table = [
+                    {
+                        "Source": e.get("source"),
+                        "Relationship": e.get("relationship"),
+                        "Target": e.get("target"),
+                        "Confidence": f"{float(e.get('confidence', 0)):.2f}",
+                        "Evidence": e.get("evidence", ""),
+                    }
+                    for e in edges
+                ]
+                st.table(edge_table)
+
+        _render_sources_section(sources)
+
+    elif last_feature == "Knowledge DNA" and isinstance(result, dict):
+        query = result.get("query", "")
+        area = result.get("research_area", "")
+        core_topics = result.get("core_topics", [])
+        key_concepts = result.get("key_concepts", [])
+        methods = result.get("methods", [])
+        findings = result.get("findings", [])
+        limitations = result.get("limitations", [])
+        themes = result.get("themes", [])
+        signals = result.get("signals", [])
+        relationships = result.get("relationships", [])
+        sources = result.get("sources", [])
+
+        st.markdown(f"**Research Area:** {area}")
+
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("Core Topics", len(core_topics))
+        m2.metric("Key Concepts", len(key_concepts))
+        m3.metric("Methods", len(methods))
+        m4.metric("Findings", len(findings))
+        m5.metric("Limitations", len(limitations))
+        m6.metric("Themes", len(themes))
+
+        if signals:
+            color_map = {
+                "TOPIC": "#dbeafe",
+                "CONCEPT": "#dcfce7",
+                "METHOD": "#fef3c7",
+                "FINDING": "#f3e8ff",
+                "LIMITATION": "#fee2e2",
+            }
+            lines = [
+                "digraph DNA {",
+                "  rankdir=LR;",
+                '  node [shape=box, style="rounded,filled", fontname="sans-serif", margin="0.2,0.1"];',
+                '  edge [fontname="sans-serif", fontsize=10];',
+            ]
+            for s in signals:
+                sname = str(s.get("name", "")).replace('"', '\\"')
+                stype = str(s.get("type", "CONCEPT")).upper()
+                bg = color_map.get(stype, "#e2e8f0")
+                lines.append(f'  "{sname}" [label="{sname}\\n[{stype}]", fillcolor="{bg}"];')
+            for r in relationships:
+                src = str(r.get("source", "")).replace('"', '\\"')
+                tgt = str(r.get("target", "")).replace('"', '\\"')
+                rel = str(r.get("relationship", "")).replace('"', '\\"')
+                lines.append(f'  "{src}" -> "{tgt}" [label="{rel}"];')
+            lines.append("}")
+
+            st.markdown("### DNA Structural Visualization")
+            st.graphviz_chart("\n".join(lines), use_container_width=True)
+
+        tab1, tab2, tab3 = st.tabs(["Key Concepts & Topics", "Methods & Findings", "Limitations & Themes"])
+        with tab1:
+            if core_topics:
+                st.markdown("**Core Topics:** " + ", ".join(f"`{t}`" for t in core_topics))
+            if key_concepts:
+                st.markdown("**Key Concepts:** " + ", ".join(f"`{c}`" for c in key_concepts))
+        with tab2:
+            if methods:
+                st.markdown("**Methods:** " + ", ".join(f"`{m}`" for m in methods))
+            if findings:
+                st.markdown("**Findings:**")
+                for f in findings:
+                    st.markdown(f"- {f}")
+        with tab3:
+            if limitations:
+                st.markdown("**Reported Limitations:**")
+                for lim in limitations:
+                    st.markdown(f"- ⚠️ {lim}")
+            if themes:
+                st.markdown("**Themes:** " + ", ".join(f"`{t}`" for t in themes))
+
+        _render_sources_section(sources)
+
+    elif last_feature == "Research Gaps" and isinstance(result, dict):
+        query = result.get("query", "")
+        area = result.get("research_area", "")
+        existing_findings = result.get("existing_findings", [])
+        reported_limitations = result.get("reported_limitations", [])
+        gaps = result.get("gaps", [])
+        sources = result.get("sources", [])
+
+        st.markdown(f"**Research Area:** {area}")
+
+        if existing_findings:
+            st.markdown("### Existing Findings in Literature")
+            for finding in existing_findings:
+                st.markdown(f"✅ {finding}")
+
+        if reported_limitations:
+            st.markdown("### Reported Limitations")
+            for lim in reported_limitations:
+                st.markdown(f"⚠️ {lim}")
+
+        st.markdown("### Identified Research Gaps")
+        if not gaps:
+            st.info("No research gaps were explicitly reported or inferred from the retrieved evidence.")
+        else:
+            for idx, g in enumerate(gaps, start=1):
+                gap_text = g.get("gap", "")
+                gap_type = g.get("type", "EXPLICIT")
+                conf = float(g.get("confidence", 0.0))
+                rationale = g.get("rationale", "")
+                doc = g.get("document", "")
+                page = g.get("page", "")
+
+                with st.container(border=True):
+                    st.markdown(f"**{idx}. {gap_text}**")
+                    col1, col2 = st.columns([1, 3])
+                    col1.metric("Confidence", f"{conf:.2f}")
+                    col1.caption(f"Type: `{gap_type}`")
+                    col2.write(f"**Rationale:** {rationale}")
+                    if doc:
+                        col2.caption(f"Supported by `{doc}` (Page {page})")
+
+        _render_sources_section(sources)
+
     else:
         # Generic display for other research tools.
         if isinstance(result, dict):
@@ -315,6 +588,9 @@ if result is not None:
                         st.write(value)
         else:
             st.json(result)
+
+    with st.expander("Raw JSON Response"):
+        st.json(result)
 
     st.download_button(
         "Download result as JSON",

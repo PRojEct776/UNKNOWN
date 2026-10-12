@@ -252,3 +252,57 @@ def test_debate_rejects_query_without_positions():
     response = client.post("/debate", json={"query": "a debate topic"})
 
     assert response.status_code == 422
+
+
+def test_knowledge_mind_map_empty_graph():
+    mock_response = type(
+        "MockResponse",
+        (),
+        {
+            "success": True,
+            "answer": '{"query": "unknown topic", "research_area": "unknown topic", "nodes": [], "edges": [], "sources": []}',
+            "error": None,
+            "error_kind": None,
+        },
+    )()
+
+    with patch.object(
+        rag_service.llm,
+        "generate_structured",
+        return_value=mock_response,
+    ):
+        response = client.post(
+            "/knowledge-mind-map",
+            json={"query": "unknown topic"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["query"] == "unknown topic"
+    assert data["nodes"] == []
+    assert data["edges"] == []
+    assert data["sources"] == []
+
+
+def test_upload_rejects_unsupported_extension():
+    response = client.post(
+        "/documents/upload",
+        files={"file": ("malicious.exe", b"binary", "application/octet-stream")},
+    )
+    assert response.status_code == 400
+    assert "Unsupported file format" in response.json()["detail"]
+
+
+def test_upload_rejects_empty_file():
+    response = client.post(
+        "/documents/upload",
+        files={"file": ("empty.txt", b"", "text/plain")},
+    )
+    assert response.status_code == 400
+    assert "empty" in response.json()["detail"].lower()
+
+
+def test_list_documents():
+    response = client.get("/documents")
+    assert response.status_code == 200
+    assert "documents" in response.json()

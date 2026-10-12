@@ -1,4 +1,3 @@
-
 """UNKNOWN X - Cloudflare Workers AI provider."""
 
 from __future__ import annotations
@@ -11,6 +10,7 @@ class CloudflareProvider(OpenAICompatProvider):
     """Cloudflare Workers AI chat completions."""
 
     provider_name = "cloudflare"
+    max_tokens_param = "max_tokens"
 
     def __init__(self) -> None:
         account_id = getattr(settings, "CLOUDFLARE_ACCOUNT_ID", "").strip()
@@ -26,8 +26,7 @@ class CloudflareProvider(OpenAICompatProvider):
             ),
             api_key=getattr(settings, "CLOUDFLARE_API_TOKEN", None),
             base_url=(
-                "https://api.cloudflare.com/client/v4/accounts/"
-                f"{account_id}/ai/v1"
+                "https://api.cloudflare.com/client/v4/accounts/" f"{account_id}/ai/v1"
             ),
             timeout_s=float(getattr(settings, "LLM_TIMEOUT_S", 10.0)),
             temperature=settings.TEMPERATURE,

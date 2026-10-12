@@ -32,7 +32,7 @@ from app.llm.openrouter_provider import OpenRouterProvider
 from app.rag.config import settings
 from app.rag.logger import logger
 
-DEFAULT_ORDER = "gemini,groq,cerebras,openrouter"
+DEFAULT_ORDER = "gemini,groq,cohere,openrouter"
 DEFAULT_TOTAL_TIMEOUT_S = 25.0
 
 _REGISTRY: dict[str, type[BaseProvider]] = {
@@ -119,7 +119,22 @@ class LLMOrchestrator:
                 logger.warning("LLM time budget spent; not trying further providers.")
                 break
 
-            response = provider.generate(prompt, system)
+            try:
+                response = provider.generate(prompt, system)
+            except Exception as exc:  # noqa: BLE001
+                response = LLMResponse(
+                    answer="",
+                    provider=provider.provider_name,
+                    model=getattr(provider, "model", ""),
+                    latency_ms=round((perf_counter() - start) * 1000, 2),
+                    success=False,
+                    error=f"{type(exc).__name__}: {exc}",
+                    error_kind=(
+                        ErrorKind.TRANSIENT
+                        if isinstance(exc, (TimeoutError, ConnectionError))
+                        else ErrorKind.UNKNOWN
+                    ),
+                )
             self.health.record(response)
 
             if response.success:
@@ -163,7 +178,22 @@ class LLMOrchestrator:
                 )
                 break
 
-            response = provider.generate_structured(prompt, system)
+            try:
+                response = provider.generate_structured(prompt, system)
+            except Exception as exc:  # noqa: BLE001
+                response = LLMResponse(
+                    answer="",
+                    provider=provider.provider_name,
+                    model=getattr(provider, "model", ""),
+                    latency_ms=round((perf_counter() - start) * 1000, 2),
+                    success=False,
+                    error=f"{type(exc).__name__}: {exc}",
+                    error_kind=(
+                        ErrorKind.TRANSIENT
+                        if isinstance(exc, (TimeoutError, ConnectionError))
+                        else ErrorKind.UNKNOWN
+                    ),
+                )
             self.health.record(response)
 
             if response.success:

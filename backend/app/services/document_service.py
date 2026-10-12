@@ -15,6 +15,9 @@ Compatible with:
 import json
 from pathlib import Path
 
+import faiss
+import numpy as np
+
 from app.rag.config import settings
 
 # ==========================================================
@@ -109,6 +112,100 @@ def calculate_metadata_completeness(doc_json: dict, chunk_count: int) -> float:
     return round(available_fields / total_checks, 2)
 
 
+def verify_document_embeddings(document_name: str) -> dict:
+    """Verify FAISS artifacts and coverage for one document."""
+
+    index_file = VECTOR_DIR / "faiss.index"
+    metadata_file = VECTOR_DIR / "faiss_metadata.json"
+    embeddings_file = VECTOR_DIR / "chunk_embeddings.npy"
+
+    result = {
+        "embedding_status": False,
+        "embedding_status_detail": "missing",
+        "embedding_expected_chunks": 0,
+        "embedding_verified_chunks": 0,
+    }
+
+    try:
+        chunk_file = CHUNK_DIR / "chunks.json"
+
+        if not all(
+            path.exists()
+            for path in (
+                index_file,
+                metadata_file,
+                embeddings_file,
+                chunk_file,
+            )
+        ):
+            return result
+
+        with open(chunk_file, "r", encoding="utf-8") as file:
+            chunks = json.load(file)
+
+        with open(metadata_file, "r", encoding="utf-8") as file:
+            indexed_chunks = json.load(file)
+
+        if not isinstance(chunks, list) or not isinstance(indexed_chunks, list):
+            result["embedding_status_detail"] = "inconsistent"
+            return result
+
+        def document_key(chunk: dict) -> str:
+            value = str(chunk.get("document", "")).replace("\\", "/")
+            return Path(value).name.casefold()
+
+        target = Path(document_name.replace("\\", "/")).name.casefold()
+
+        expected = [chunk for chunk in chunks if document_key(chunk) == target]
+        indexed = [chunk for chunk in indexed_chunks if document_key(chunk) == target]
+
+        result["embedding_expected_chunks"] = len(expected)
+        result["embedding_verified_chunks"] = len(indexed)
+
+        index = faiss.read_index(str(index_file))
+        embeddings = np.load(embeddings_file, mmap_mode="r")
+
+        artifacts_match = (
+            index.ntotal == len(indexed_chunks)
+            and embeddings.ndim == 2
+            and embeddings.shape[0] == len(indexed_chunks)
+            and index.d == embeddings.shape[1]
+        )
+
+        if not artifacts_match:
+            result["embedding_status_detail"] = "inconsistent"
+            return result
+
+        if not expected:
+            result["embedding_status_detail"] = "no_chunks"
+            return result
+
+        def chunk_id(chunk: dict):
+            return chunk.get("chunk_id", chunk.get("id"))
+
+        expected_ids = {chunk_id(chunk) for chunk in expected}
+        indexed_ids = {chunk_id(chunk) for chunk in indexed}
+
+        # Only claim full coverage when stable IDs are available and match.
+        if (
+            None not in expected_ids
+            and None not in indexed_ids
+            and len(expected_ids) == len(expected)
+            and len(indexed_ids) == len(indexed)
+            and expected_ids == indexed_ids
+        ):
+            result["embedding_status"] = True
+            result["embedding_status_detail"] = "verified"
+        else:
+            result["embedding_status_detail"] = "inconsistent"
+
+        return result
+
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+        result["embedding_status_detail"] = "unverified"
+        return result
+
+
 # ==========================================================
 # Build Standard Metadata Object
 # ==========================================================
@@ -127,6 +224,25 @@ def build_document_metadata(document_name: str) -> dict:
 
     doc_json = load_document_json(document_name)
     chunk_count = count_document_chunks(document_name)
+    embedding_info = verify_document_embeddings(document_name)
+
+    pages_list = doc_json.get("pages", [])
+    if pages_list:
+        total_p = len(pages_list)
+        non_empty_p = sum(
+            1
+            for p in pages_list
+            if (p.get("word_count", 0) > 0 or bool(str(p.get("text", "")).strip()))
+        )
+        if non_empty_p < total_p:
+            ocr_required = True
+            ocr_quality = round(non_empty_p / max(total_p, 1), 2)
+        else:
+            ocr_required = False
+            ocr_quality = 1.0
+    else:
+        ocr_required = False
+        ocr_quality = 1.0
 
     metadata = {
         # --------------------------
@@ -148,9 +264,9 @@ def build_document_metadata(document_name: str) -> dict:
         # --------------------------
         # Pipeline Status
         # --------------------------
-        "embedding_status": True,  # Verified later using FAISS metadata.
-        "ocr_required": False,  # Digital PDFs extracted directly.
-        "ocr_quality": 1.0,  # Full OCR score for digital PDFs.
+        **embedding_info,  # Verified later using FAISS metadata.
+        "ocr_required": ocr_required,
+        "ocr_quality": ocr_quality,
         # --------------------------
         # Metadata Health
         # --------------------------
@@ -202,3 +318,56 @@ def load_saved_metadata(document_name: str) -> dict:
 
     with open(metadata_file, "r", encoding="utf-8") as file:
         return json.load(file)
+
+
+# ==========================================================
+# Ingest Document Pipeline
+# ==========================================================
+
+
+def ingest_document(file_path: Path) -> dict:
+    """
+    Ingest, process, chunk, and index a new research document.
+
+    Pipeline:
+    1. Extract pages and text using DocumentLoader
+    2. Save document JSON into datasets/json/
+    3. Re-chunk documents into datasets/chunks/chunks.json
+    4. Re-build BM25 lexical index (bm25_index.pkl)
+    5. Re-build FAISS semantic index (faiss.index, chunk_embeddings.npy, faiss_metadata.json)
+    6. Compute and persist Document IQ report
+    """
+    from app.rag.bm25_index_builder import BM25IndexBuilder
+    from app.rag.chunker import DocumentChunker
+    from app.rag.document_loader import DocumentLoader
+    from app.rag.faiss_index_builder import FAISSIndexBuilder
+    from app.rag.scoring import calculate_document_iq
+
+    loader = DocumentLoader()
+    doc_json = loader.create_document_json(file_path)
+    loader.save_document_json(doc_json)
+
+    chunker = DocumentChunker()
+    all_chunks = chunker.create_chunks()
+
+    bm25_builder = BM25IndexBuilder()
+    bm25_builder.build_index()
+
+    faiss_builder = FAISSIndexBuilder()
+    faiss_builder.build_index()
+
+    metadata = build_document_metadata(file_path.name)
+    iq_report = calculate_document_iq(metadata)
+    metadata["document_iq"] = iq_report
+    save_document_metadata(metadata)
+
+    return {
+        "status": "success",
+        "document": file_path.name,
+        "title": doc_json.get("title", file_path.stem),
+        "total_pages": doc_json.get("total_pages", 1),
+        "total_words": doc_json.get("total_words", 0),
+        "total_chunks": len(all_chunks),
+        "document_chunks": count_document_chunks(file_path.name),
+        "document_iq": iq_report,
+    }

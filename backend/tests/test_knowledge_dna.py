@@ -112,6 +112,25 @@ def test_signal_type():
     assert report.signals[1].type == KnowledgeSignalType.FINDING
 
 
+def test_component_signal_type_is_normalized():
+    dna = KnowledgeDNA()
+
+    signal = dna._parse_signal(
+        {
+            "type": "COMPONENT",
+            "name": "Adaptive retrieval",
+            "description": "A retrieval component",
+            "evidence": ["Evidence from the paper"],
+            "confidence": 0.9,
+            "document": "sample_ieee.pdf",
+            "page": 4,
+            "chunk_id": "chunk_004",
+        }
+    )
+
+    assert signal.type == KnowledgeSignalType.CONCEPT
+
+
 def test_signal_traceability():
     engine = KnowledgeDNA()
 

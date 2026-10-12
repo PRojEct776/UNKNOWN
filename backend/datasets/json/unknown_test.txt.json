@@ -1,0 +1,18 @@
+{
+    "title": "unknown_test.txt",
+    "source_file": "unknown_test.txt.txt",
+    "document_type": ".txt",
+    "document_hash": "60c3473fb2da5161ee153a398abdadafd914d641d9d4fe7601690869de493163",
+    "total_pages": 1,
+    "total_words": 156,
+    "estimated_read_time": 0.78,
+    "pages": [
+        {
+            "page_number": 1,
+            "word_count": 156,
+            "reading_time_minutes": 0.78,
+            "page_hash": "60c3473fb2da5161ee153a398abdadafd914d641d9d4fe7601690869de493163",
+            "text": "# Sample Research Document: DNA Data Storage DNA data storage is a technology that stores digital information using synthetic DNA molecules. Digital data is encoded into sequences of DNA nucleotides: adenine, thymine, cytosine, and guanine. One major advantage of DNA data storage is its high theoretical storage density. DNA can potentially preserve information for long periods under suitable storage conditions. However, DNA data storage has several limitations. The cost of DNA synthesis and sequencing remains a major challenge. Reading and writing data can be slower than conventional electronic storage. Errors during synthesis, sequencing, and molecular handling can also affect data reliability. Researchers are investigating error-correction algorithms, improved encoding methods, and more affordable synthesis technologies to address these challenges. The main research gap is the need for cost-effective, scalable, and reliable DNA storage systems that support practical data retrieval. Key concepts: DNA data storage, nucleotide encoding, synthesis cost, sequencing, error correction, storage density, scalability, and reliable retrieval."
+        }
+    ]
+}

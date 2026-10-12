@@ -126,13 +126,13 @@ class BaseProvider(ABC):
             )
 
         return LLMResponse(
-            answer=answer,
-            provider=self.provider_name,
-            model=self.model,
-            latency_ms=round((perf_counter() - start) * 1000, 2),
-            success=error is None,
-            error=error,
-            error_kind=kind,
+            answer,
+            self.provider_name,
+            self.model,
+            round((perf_counter() - start) * 1000, 2),
+            error is None,
+            error,
+            kind,
         )
 
     def generate_structured(
@@ -182,13 +182,13 @@ class BaseProvider(ABC):
             )
 
         return LLMResponse(
-            answer=answer,
-            provider=self.provider_name,
-            model=self.model,
-            latency_ms=round((perf_counter() - start) * 1000, 2),
-            success=error is None,
-            error=error,
-            error_kind=kind,
+            answer,
+            self.provider_name,
+            self.model,
+            round((perf_counter() - start) * 1000, 2),
+            error is None,
+            error,
+            kind,
         )
 
     def _kind_of(self, exc: Exception) -> ErrorKind:

@@ -1,0 +1,140 @@
+"""
+Embedding Model Loader for UNKNOWN
+
+Uses Hugging Face Transformers + PyTorch directly instead of
+sentence-transformers, avoiding the sklearn native DLL dependency.
+
+Embedding model:
+    sentence-transformers/all-MiniLM-L6-v2
+
+Output:
+    384-dimensional L2-normalized embeddings
+"""
+
+import torch
+import torch.nn.functional as F
+from transformers import AutoModel, AutoTokenizer
+
+from app.rag.config import settings
+from app.rag.logger import logger
+
+# Singleton instances
+_tokenizer = None
+_embedding_model = None
+
+
+def get_embedding_model():
+    """
+    Load the embedding model once and reuse it.
+    """
+    global _tokenizer, _embedding_model
+
+    if _embedding_model is None:
+
+        logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL}")
+
+        _tokenizer = AutoTokenizer.from_pretrained(settings.EMBEDDING_MODEL)
+
+        _embedding_model = AutoModel.from_pretrained(settings.EMBEDDING_MODEL)
+
+        _embedding_model.eval()
+
+        logger.info("Embedding model loaded successfully.")
+
+    return _tokenizer, _embedding_model
+
+
+def _mean_pooling(model_output, attention_mask):
+    """
+    Mean-pool token embeddings while ignoring padding tokens.
+    """
+
+    token_embeddings = model_output.last_hidden_state
+
+    mask = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+
+    return torch.sum(token_embeddings * mask, dim=1) / torch.clamp(
+        mask.sum(dim=1),
+        min=1e-9,
+    )
+
+
+def embed_text(text: str):
+    """
+    Generate a normalized 384-dimensional embedding
+    for a single text.
+    """
+
+    tokenizer, model = get_embedding_model()
+
+    encoded = tokenizer(
+        text,
+        padding=True,
+        truncation=True,
+        return_tensors="pt",
+    )
+
+    with torch.no_grad():
+
+        model_output = model(**encoded)
+
+        embedding = _mean_pooling(
+            model_output,
+            encoded["attention_mask"],
+        )
+
+        embedding = F.normalize(
+            embedding,
+            p=2,
+            dim=1,
+        )
+
+    return embedding[0].cpu().numpy()
+
+
+def embed_texts(texts: list[str]):
+    """
+    Generate normalized embeddings for multiple texts.
+    """
+
+    tokenizer, model = get_embedding_model()
+
+    encoded = tokenizer(
+        texts,
+        padding=True,
+        truncation=True,
+        return_tensors="pt",
+    )
+
+    with torch.no_grad():
+
+        model_output = model(**encoded)
+
+        embeddings = _mean_pooling(
+            model_output,
+            encoded["attention_mask"],
+        )
+
+        embeddings = F.normalize(
+            embeddings,
+            p=2,
+            dim=1,
+        )
+
+    return embeddings.cpu().numpy()
+
+
+# ---------------------- TEST BLOCK ---------------------- #
+
+if __name__ == "__main__":
+
+    sample_query = "Explain virtualization in cloud computing."
+
+    embedding = embed_text(sample_query)
+
+    print("\n========== EMBEDDER TEST ==========")
+    print(f"Model Used      : {settings.EMBEDDING_MODEL}")
+    print(f"Sample Query    : {sample_query}")
+    print(f"Embedding Shape : {embedding.shape}")
+    print(f"First 5 Values  : {embedding[:5]}")
+    print("===================================")

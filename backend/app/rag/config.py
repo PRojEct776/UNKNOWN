@@ -103,6 +103,7 @@ class Settings:
     )
 
     LLM_TIMEOUT_S: float = float(os.getenv("LLM_TIMEOUT_S", "10.0"))
+    LLM_TOTAL_TIMEOUT_S: float = float(os.getenv("LLM_TOTAL_TIMEOUT_S", "45.0"))
 
     CORS_ORIGINS: str = os.getenv(
         "CORS_ORIGINS",

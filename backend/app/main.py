@@ -4,9 +4,11 @@ UNKNOWN Project - FastAPI Application
 Exposes the verified UNKNOWN RAG pipeline through HTTP APIs.
 """
 
+import json
 import time
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.schemas import (
@@ -34,7 +36,9 @@ from app.api.schemas import (
     VisualAnswerResponse,
 )
 from app.rag.config import settings
+from app.rag.exceptions import EmptyDocumentError, UnsupportedDocumentError
 from app.rag.logger import logger
+from app.services.document_service import ingest_document
 from app.services.rag_service import (
     RAGService,
 )  # pyright: ignore[reportAttributeAccessIssue]
@@ -87,6 +91,90 @@ def health_check():
         "service": "UNKNOWN AI",
         "version": "1.0.0",
     }
+
+
+# ============================================================
+# DOCUMENT MANAGEMENT & INGESTION
+# ============================================================
+
+
+@app.post(
+    "/documents/upload",
+    responses={
+        400: {"description": "Invalid, unsupported, or empty file."},
+        500: {"description": "Ingestion or indexing failure."},
+    },
+)
+@app.post("/upload", include_in_schema=False)
+async def upload_document(file: UploadFile = File(...)):
+    """
+    Upload and index a PDF, DOCX, or TXT research document.
+
+    Automatically extracts text, builds overlapping chunks,
+    updates BM25 and FAISS vector indices, updates Document IQ metadata,
+    and makes the new document instantly searchable.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file was provided.")
+
+    filename = Path(file.filename).name
+    extension = Path(filename).suffix.lower()
+
+    if extension not in settings.SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format '{extension}'. Supported formats: {', '.join(settings.SUPPORTED_EXTENSIONS)}",
+        )
+
+    settings.PAPERS_DIR.mkdir(parents=True, exist_ok=True)
+    destination_path = settings.PAPERS_DIR / filename
+
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+        with open(destination_path, "wb") as f:
+            f.write(content)
+
+        report = ingest_document(destination_path)
+        rag_service.reload_retriever()
+
+        return report
+
+    except HTTPException:
+        raise
+    except EmptyDocumentError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document contains no extractable text: {error}",
+        ) from error
+    except UnsupportedDocumentError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+    except Exception as error:
+        logger.exception("Document ingestion failed.")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Document ingestion failed: {error}",
+        ) from error
+
+
+@app.get("/documents")
+def list_documents():
+    """List indexed documents with metadata and Document IQ scores."""
+    documents = []
+    if settings.METADATA_DIR.exists():
+        for path in sorted(settings.METADATA_DIR.glob("*_metadata.json")):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    documents.append(json.load(f))
+            except Exception:
+                pass
+    return {"documents": documents}
+
 
 
 # ============================================================

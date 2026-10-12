@@ -1,0 +1,13 @@
+# Sample Research Document: DNA Data Storage
+
+DNA data storage is a technology that stores digital information using synthetic DNA molecules. Digital data is encoded into sequences of DNA nucleotides: adenine, thymine, cytosine, and guanine.
+
+One major advantage of DNA data storage is its high theoretical storage density. DNA can potentially preserve information for long periods under suitable storage conditions.
+
+However, DNA data storage has several limitations. The cost of DNA synthesis and sequencing remains a major challenge. Reading and writing data can be slower than conventional electronic storage. Errors during synthesis, sequencing, and molecular handling can also affect data reliability.
+
+Researchers are investigating error-correction algorithms, improved encoding methods, and more affordable synthesis technologies to address these challenges.
+
+The main research gap is the need for cost-effective, scalable, and reliable DNA storage systems that support practical data retrieval.
+
+Key concepts: DNA data storage, nucleotide encoding, synthesis cost, sequencing, error correction, storage density, scalability, and reliable retrieval.
