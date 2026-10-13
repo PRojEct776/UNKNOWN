@@ -4,12 +4,21 @@ UNKNOWN Project - FastAPI Application
 Exposes the verified UNKNOWN RAG pipeline through HTTP APIs.
 """
 
+import hashlib
 import json
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.auth import (
+    SessionCreateRequest,
+    SessionResponse,
+    resolve_authenticated_workspace,
+    session_manager,
+)
+from app.rag.document_eligibility import is_test_document
 
 from app.api.schemas import (
     AdaptiveAnswerRequest,
@@ -26,12 +35,17 @@ from app.api.schemas import (
     KnowledgeDNAResponse,
     KnowledgeMindMapRequest,
     KnowledgeMindMapResponse,
+    QueryAssistantRequest,
+    QueryAssistantResponse,
     QueryRequest,
     QueryResponse,
+    ReasoningRequest,
+    ReasoningResponse,
     ResearchComparisonRequest,
     ResearchComparisonResponse,
     ResearchGapRequest,
     ResearchGapResponse,
+    Source,
     VisualAnswerRequest,
     VisualAnswerResponse,
 )
@@ -94,6 +108,48 @@ def health_check():
 
 
 # ============================================================
+# AUTHENTICATION & WORKSPACE SESSIONS
+# ============================================================
+
+
+@app.post("/auth/session", response_model=SessionResponse)
+def create_session(request: SessionCreateRequest | None = None):
+    """
+    Generate a server-side session token for a dedicated workspace partition.
+    Protects user documents from client-supplied identity spoofing.
+    """
+    desired_workspace = request.workspace_id if request else None
+    session_data = session_manager.create_session(desired_workspace)
+    return SessionResponse(
+        token=session_data["token"],
+        workspace_id=session_data["workspace_id"],
+        created_at=session_data["created_at"],
+        is_authenticated=session_data["is_authenticated"],
+    )
+
+
+@app.get("/auth/session")
+def get_session_info(
+    request: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    """Inspect active session token and resolved workspace partition."""
+    workspace, is_auth = resolve_authenticated_workspace(
+        request, authorization, x_session_token
+    )
+    return {
+        "workspace_id": workspace,
+        "is_authenticated": is_auth,
+        "security_isolation": (
+            "Cryptographically verified session partition"
+            if is_auth
+            else "Unauthenticated sandbox workspace"
+        ),
+    }
+
+
+# ============================================================
 # DOCUMENT MANAGEMENT & INGESTION
 # ============================================================
 
@@ -101,23 +157,37 @@ def health_check():
 @app.post(
     "/documents/upload",
     responses={
-        400: {"description": "Invalid, unsupported, or empty file."},
+        400: {"description": "Invalid, unsupported, empty, or duplicate file."},
         500: {"description": "Ingestion or indexing failure."},
     },
 )
 @app.post("/upload", include_in_schema=False)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(
+    request: Request,
+    file: UploadFile = File(...),
+    user_id: str = Form("default_user"),
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
     """
-    Upload and index a PDF, DOCX, or TXT research document.
+    Upload and index a PDF, DOCX, or TXT research document into the caller's workspace.
 
     Automatically extracts text, builds overlapping chunks,
     updates BM25 and FAISS vector indices, updates Document IQ metadata,
-    and makes the new document instantly searchable.
+    and makes the new document instantly searchable strictly within the workspace.
     """
+    active_user, _ = resolve_authenticated_workspace(
+        request, authorization, x_session_token, client_user_id=user_id
+    )
+
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file was provided.")
 
     filename = Path(file.filename).name
+    # Path traversal and injection defense
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename format.")
+
     extension = Path(filename).suffix.lower()
 
     if extension not in settings.SUPPORTED_EXTENSIONS:
@@ -127,17 +197,49 @@ async def upload_document(file: UploadFile = File(...)):
         )
 
     settings.PAPERS_DIR.mkdir(parents=True, exist_ok=True)
-    destination_path = settings.PAPERS_DIR / filename
+    # Store with unique filename per workspace to prevent collisions
+    if active_user != "default_user":
+        storage_filename = f"{active_user}__{filename}"
+    else:
+        storage_filename = filename
+
+    destination_path = settings.PAPERS_DIR / storage_filename
 
     try:
         content = await file.read()
         if not content:
             raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
+        # Limit file size to 50MB
+        if len(content) > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size exceeds maximum allowed limit of 50MB.")
+
+        # Content hash check for duplicate prevention
+        content_hash = hashlib.sha256(content).hexdigest()
+
+        # Check existing metadata for identical hash
+        if settings.METADATA_DIR.exists():
+            for m_path in settings.METADATA_DIR.glob("*_metadata.json"):
+                try:
+                    with open(m_path, "r", encoding="utf-8") as mf:
+                        m_data = json.load(mf)
+                        if m_data.get("document_hash") == content_hash:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Duplicate upload detected: Document '{m_data.get('document', filename)}' with identical content already exists.",
+                            )
+                except HTTPException:
+                    raise
+                except Exception:
+                    pass
+
         with open(destination_path, "wb") as f:
             f.write(content)
 
-        report = ingest_document(destination_path)
+        report = ingest_document(destination_path, user_id=active_user)
+        # Ensure display name returned to caller reflects clean filename
+        report["document"] = filename
+        report["user_id"] = active_user
         rag_service.reload_retriever()
 
         return report
@@ -163,14 +265,37 @@ async def upload_document(file: UploadFile = File(...)):
 
 
 @app.get("/documents")
-def list_documents():
-    """List indexed documents with metadata and Document IQ scores."""
+def list_documents(
+    request: Request,
+    user_id: str | None = None,
+    include_test_docs: bool = False,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    """
+    List indexed documents with metadata and Document IQ scores.
+    Strictly filters by workspace and excludes test development documents by default.
+    """
+    active_user, has_token = resolve_authenticated_workspace(
+        request, authorization, x_session_token, client_user_id=user_id
+    )
+    # If caller explicitly gave user_id or has a session token, scope to that user
+    effective_user = active_user if (has_token or user_id) else None
+
     documents = []
     if settings.METADATA_DIR.exists():
         for path in sorted(settings.METADATA_DIR.glob("*_metadata.json")):
             try:
                 with open(path, "r", encoding="utf-8") as f:
-                    documents.append(json.load(f))
+                    doc = json.load(f)
+                    doc_name = doc.get("document", "")
+                    # Exclude development/test fixtures unless explicitly requested
+                    if not include_test_docs and is_test_document(doc_name, doc):
+                        continue
+                    # Filter by workspace
+                    if effective_user and doc.get("user_id") and doc.get("user_id") != effective_user:
+                        continue
+                    documents.append(doc)
             except Exception:
                 pass
     return {"documents": documents}
@@ -203,13 +328,30 @@ def list_documents():
         },
     },
 )
-def query(request: QueryRequest):
-    """Execute the complete UNKNOWN RAG pipeline."""
+def query(
+    request: QueryRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    """Execute the complete UNKNOWN RAG pipeline with workspace scoping."""
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
 
     start_time = time.perf_counter()
 
     try:
-        response = rag_service.query(request.query)
+        response = rag_service.query(
+            request.query,
+            user_id=active_user,
+            documents=request.documents,
+        )
     except RuntimeError as error:
         logger.exception("Query processing failed.")
 
@@ -282,13 +424,30 @@ def query(request: QueryRequest):
         },
     },
 )
-def verify_claim(request: ClaimVerificationRequest):
+def verify_claim(
+    request: ClaimVerificationRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
     """Verify a user-provided claim against indexed documents."""
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
 
     start_time = time.perf_counter()
 
     try:
-        response = rag_service.verify_claim(request.claim)
+        response = rag_service.verify_claim(
+            request.claim,
+            user_id=active_user,
+            documents=request.documents,
+        )
 
     except RuntimeError as error:
         logger.exception("Claim verification failed.")
@@ -371,13 +530,30 @@ def verify_claim(request: ClaimVerificationRequest):
         },
     },
 )
-def discover_concept(request: ConceptDiscoveryRequest):
+def discover_concept(
+    request: ConceptDiscoveryRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
     """Identify a technical concept from a natural-language description."""
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
 
     start_time = time.perf_counter()
 
     try:
-        result = rag_service.discover_concept(request.description)
+        result = rag_service.discover_concept(
+            request.description,
+            user_id=active_user,
+            documents=request.documents,
+        )
 
         return ConceptDiscoveryResponse(
             description=result.description,
@@ -448,15 +624,32 @@ def discover_concept(request: ConceptDiscoveryRequest):
     "/contradictions",
     response_model=ContradictionResponse,
 )
-def contradictions(request: ContradictionRequest):
+def contradictions(
+    request: ContradictionRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
     """
     Detect conflicting claims across retrieved document evidence.
     """
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
 
     start_time = time.perf_counter()
 
     try:
-        report = rag_service.find_contradictions(request.query)
+        report = rag_service.find_contradictions(
+            request.query,
+            user_id=active_user,
+            documents=request.documents,
+        )
 
         return ContradictionResponse(
             query=report.query,
@@ -516,11 +709,29 @@ def contradictions(request: ContradictionRequest):
     "/compare",
     response_model=ResearchComparisonResponse,
 )
-def compare(request: ResearchComparisonRequest):
+def compare(
+    request: ResearchComparisonRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
+
     start_time = time.perf_counter()
 
     try:
-        report = rag_service.compare_research(request.query)
+        report = rag_service.compare_research(
+            request.query,
+            documents=request.documents,
+            user_id=active_user,
+        )
 
         return ResearchComparisonResponse(
             query=report.query,
@@ -561,11 +772,29 @@ def compare(request: ResearchComparisonRequest):
 
 
 @app.post("/gaps", response_model=ResearchGapResponse)
-def research_gaps(request: ResearchGapRequest):
+def research_gaps(
+    request: ResearchGapRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
+
     start_time = time.perf_counter()
 
     try:
-        report = rag_service.find_research_gaps(request.query)  # type: ignore
+        report = rag_service.find_research_gaps(
+            request.query,
+            user_id=active_user,
+            documents=request.documents,
+        )  # type: ignore
 
         return ResearchGapResponse(
             query=report.query,
@@ -625,7 +854,21 @@ def research_gaps(request: ResearchGapRequest):
 
 
 @app.post("/debate", response_model=DebateResponse)
-def debate(request: DebateRequest):
+def debate(
+    request: DebateRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
+
     start_time = time.perf_counter()
 
     try:
@@ -633,6 +876,8 @@ def debate(request: DebateRequest):
             query=request.query,
             position_a=request.position_a,
             position_b=request.position_b,
+            user_id=active_user,
+            documents=request.documents,
         )
 
         return DebateResponse(
@@ -696,12 +941,28 @@ def debate(request: DebateRequest):
 
 
 @app.post("/knowledge-dna", response_model=KnowledgeDNAResponse)
-def knowledge_dna(request: KnowledgeDNARequest):
+def knowledge_dna(
+    request: KnowledgeDNARequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
+
     start_time = time.perf_counter()
 
     try:
         report = rag_service.generate_knowledge_dna(
             query=request.query,
+            user_id=active_user,
+            documents=request.documents,
         )
 
         if report is None:
@@ -778,12 +1039,28 @@ def knowledge_dna(request: KnowledgeDNARequest):
     "/knowledge-mind-map",
     response_model=KnowledgeMindMapResponse,
 )
-def knowledge_mind_map(request: KnowledgeMindMapRequest):
+def knowledge_mind_map(
+    request: KnowledgeMindMapRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
+
     start_time = time.perf_counter()
 
     try:
         report = rag_service.generate_knowledge_mind_map(  # type: ignore
             query=request.query,
+            user_id=active_user,
+            documents=request.documents,
         )
 
         return KnowledgeMindMapResponse(
@@ -885,12 +1162,28 @@ def adaptive_answer(request: AdaptiveAnswerRequest):
     "/visual-answer",
     response_model=VisualAnswerResponse,
 )
-def visual_answer(request: VisualAnswerRequest):
+def visual_answer(
+    request: VisualAnswerRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
+
     start_time = time.perf_counter()
 
     try:
         result = rag_service.generate_visual_answer(
             query=request.query,
+            user_id=active_user,
+            documents=request.documents,
         )
 
         return VisualAnswerResponse(
@@ -924,3 +1217,105 @@ def visual_answer(request: VisualAnswerRequest):
             "Visual answer endpoint completed in %.2f ms.",
             elapsed_ms,
         )
+
+
+@app.post(
+    "/reason",
+    response_model=ReasoningResponse,
+    responses={
+        400: {"description": "Invalid reasoning query."},
+        500: {"description": "Reasoning pipeline failure."},
+    },
+)
+def reason(
+    request: ReasoningRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    """Execute Srinidhi's multi-step reasoning pipeline with workspace scoping."""
+    if request.documents and len(request.documents) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
+
+    start_time = time.perf_counter()
+    try:
+        res = rag_service.reason(
+            request.query,
+            doc_filter=request.documents,
+            user_id=active_user,
+        )
+        sources = [
+            Source(
+                rank=s.get("rank", 0),
+                document=s.get("document", "Unknown"),
+                page=s.get("page", "N/A"),
+                chunk_id=s.get("chunk_id", "N/A"),
+                hybrid_score=float(s.get("hybrid_score", 0.0)),
+                bm25_score=float(s.get("bm25_score", 0.0)),
+                faiss_score=float(s.get("faiss_score", 0.0)),
+            )
+            for s in res.get("sources", [])
+        ]
+        return ReasoningResponse(
+            query=res.get("query", request.query),
+            subquestions=res.get("subquestions", []),
+            answer=res.get("answer", ""),
+            sources=sources,
+        )
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("Reasoning endpoint failed.")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Reasoning processing failed: {error}",
+        ) from error
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(f"Reasoning endpoint completed in {elapsed_ms:.2f} ms.")
+
+
+@app.post(
+    "/query-assistant",
+    response_model=QueryAssistantResponse,
+    responses={
+        400: {"description": "Invalid query."},
+        500: {"description": "Query Assistant processing failure."},
+    },
+)
+def query_assistant(
+    request: QueryAssistantRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    """Improve research queries and suggest the best UNKNOWN tool."""
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
+    try:
+        res = rag_service.query_assistant(request.query, task=request.task)
+        return QueryAssistantResponse(
+            original_query=res.get("original_query", request.query),
+            refined_query=res.get("refined_query", request.query),
+            suggested_task=res.get("suggested_task", "Research Assistant"),
+            explanation=res.get("explanation", ""),
+            alternative_queries=res.get("alternative_queries", []),
+            tips=res.get("tips", []),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("Query Assistant failed.")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Query Assistant failed: {error}",
+        ) from error

@@ -38,6 +38,10 @@ Additional capabilities:
 
 """
 
+from __future__ import annotations
+
+from typing import Any
+
 from app.api.schemas import (
     ClaimVerificationResponse,
     QueryResponse,
@@ -154,6 +158,49 @@ class RAGService:
         self.retriever = HybridSearch()
         self.reasoning_engine.retriever = self.retriever
         logger.info("RAG Service retriever reloaded successfully.")
+
+    def _search(
+        self,
+        query: str,
+        top_k: int | None = None,
+        doc_filter: list[str] | set[str] | None = None,
+        user_id: str | None = None,
+        exclude_test_docs: bool | None = None,
+    ):
+        """
+        Unified search gateway for all user-facing RAG routes.
+        Guarantees test-document exclusion and workspace isolation.
+        """
+        if exclude_test_docs is None:
+            exclude_test_docs = True if user_id is not None else False
+
+        kwargs: dict[str, Any] = {}
+        if top_k is not None:
+            kwargs["top_k"] = top_k
+        if doc_filter is not None:
+            kwargs["doc_filter"] = doc_filter
+        if user_id is not None:
+            kwargs["user_id"] = user_id
+        if exclude_test_docs:
+            kwargs["exclude_test_docs"] = exclude_test_docs
+
+        try:
+            return self.retriever.search(query=query, **kwargs)
+        except TypeError:
+            import inspect
+
+            sig = inspect.signature(self.retriever.search)
+            accepted = sig.parameters
+            call_kwargs: dict[str, Any] = {}
+            if "top_k" in accepted and top_k is not None:
+                call_kwargs["top_k"] = top_k
+            if "doc_filter" in accepted and doc_filter is not None:
+                call_kwargs["doc_filter"] = doc_filter
+            if "user_id" in accepted and user_id is not None:
+                call_kwargs["user_id"] = user_id
+            if "exclude_test_docs" in accepted:
+                call_kwargs["exclude_test_docs"] = exclude_test_docs
+            return self.retriever.search(query, **call_kwargs)
 
 
     # ======================================================
@@ -292,14 +339,14 @@ class RAGService:
     def query(
         self,
         user_query: str,
+        user_id: str | None = None,
+        documents: list[str] | None = None,
     ) -> QueryResponse:
         """
-
-        Execute the complete UNKNOWN X RAG pipeline.
-
+        Execute the complete UNKNOWN X RAG pipeline with workspace scoping.
         """
 
-        logger.info(f"Processing query: {user_query}")
+        logger.info(f"Processing query: {user_query} (user_id={user_id})")
 
         # ==================================================
 
@@ -323,7 +370,11 @@ class RAGService:
             logger.info("Routing query to Srinidhi's ReasoningEngine.")
 
             try:
-                reasoning_result = self.reasoning_engine.reason(normalized_query)
+                reasoning_result = self.reasoning_engine.reason(
+                    normalized_query,
+                    doc_filter=documents,
+                    user_id=user_id,
+                )
 
                 abstention = (
                     "The retrieved context does not contain enough information."
@@ -384,7 +435,11 @@ class RAGService:
 
         # ==================================================
 
-        results = self.retriever.search(normalized_query)
+        results = self._search(
+            normalized_query,
+            doc_filter=documents,
+            user_id=user_id,
+        )
 
         logger.info(f"Retrieved {len(results)} chunks.")
 
@@ -519,7 +574,12 @@ class RAGService:
 
     # ======================================================
 
-    def discover_concept(self, description: str):
+    def discover_concept(
+        self,
+        description: str,
+        user_id: str | None = None,
+        documents: list[str] | None = None,
+    ):
         """
 
         Identify an unknown technical concept from a user's
@@ -532,11 +592,13 @@ class RAGService:
 
             raise ValueError("Description must not be empty.")
 
-        logger.info(f"Running concept discovery: {description}")
+        logger.info(f"Running concept discovery: {description} (user_id={user_id})")
 
-        results = self.retriever.search(
+        results = self._search(
             description,
             top_k=10,
+            doc_filter=documents,
+            user_id=user_id,
         )
 
         if not results:
@@ -586,6 +648,8 @@ class RAGService:
     def verify_claim(
         self,
         claim: str,
+        user_id: str | None = None,
+        documents: list[str] | None = None,
     ) -> ClaimVerificationResponse:
         """
 
@@ -595,7 +659,7 @@ class RAGService:
 
         """
 
-        logger.info(f"Verifying claim: {claim}")
+        logger.info(f"Verifying claim: {claim} (user_id={user_id})")
 
         # ==================================================
 
@@ -603,9 +667,25 @@ class RAGService:
 
         # ==================================================
 
-        results = self.retriever.search(claim)
+        results = self._search(
+            claim,
+            doc_filter=documents,
+            user_id=user_id,
+        )
 
         logger.info(f"Retrieved {len(results)} chunks " f"for claim verification.")
+
+        if not results:
+            logger.info("No matching evidence found for claim verification.")
+            return ClaimVerificationResponse(
+                claim=claim,
+                verdict="UNVERIFIABLE",
+                confidence=0.0,
+                explanation="No relevant evidence was found in the authorized workspace documents to verify this claim.",
+                evidence=[],
+                source_chunk_ids=[],
+                sources=[],
+            )
 
         # ==================================================
 
@@ -682,6 +762,8 @@ class RAGService:
     def find_contradictions(
         self,
         query: str,
+        user_id: str | None = None,
+        documents: list[str] | None = None,
     ):
         """
 
@@ -691,7 +773,7 @@ class RAGService:
 
         """
 
-        logger.info(f"Running contradiction analysis: {query}")
+        logger.info(f"Running contradiction analysis: {query} (user_id={user_id})")
 
         # ==================================================
 
@@ -699,9 +781,22 @@ class RAGService:
 
         # ==================================================
 
-        results = self.retriever.search(query)
+        results = self._search(
+            query,
+            doc_filter=documents,
+            user_id=user_id,
+        )
 
         logger.info(f"Retrieved {len(results)} chunks " f"for contradiction analysis.")
+
+        if not results:
+            from app.rag.contradiction_finder import ContradictionReport
+            return ContradictionReport(
+                query=query,
+                claims=[],
+                relationships=[],
+                contradictions_found=0,
+            )
 
         # ==================================================
 
@@ -766,6 +861,8 @@ class RAGService:
     def compare_research(
         self,
         query: str,
+        documents: list[str] | None = None,
+        user_id: str | None = None,
     ):
         """
 
@@ -774,8 +871,10 @@ class RAGService:
         retrieved document evidence.
 
         """
+        if documents and len(documents) > 10:
+            raise ValueError("Maximum 10 documents allowed for comparison.")
 
-        logger.info(f"Running research comparison: {query}")
+        logger.info(f"Running research comparison: {query} (user_id={user_id})")
 
         # ==================================================
 
@@ -783,9 +882,23 @@ class RAGService:
 
         # ==================================================
 
-        results = self.retriever.search(query)
+        results = self._search(
+            query,
+            doc_filter=documents,
+            user_id=user_id,
+        )
 
         logger.info(f"Retrieved {len(results)} chunks " f"for research comparison.")
+
+        if not results:
+            from app.rag.research_comparison import ComparisonReport
+            return ComparisonReport(
+                query=query,
+                entities=[],
+                comparison=[],
+                summary="No relevant evidence was found across the specified documents to perform comparison.",
+                sources=[],
+            )
 
         # ==================================================
 
@@ -852,10 +965,32 @@ class RAGService:
         query: str,
         position_a: str,
         position_b: str,
+        user_id: str | None = None,
+        documents: list[str] | None = None,
     ):
         """Generate an evidence-grounded AI debate."""
 
-        results = self.retriever.search(query)
+        logger.info(f"Running AI debate: {query} (user_id={user_id})")
+
+        results = self._search(
+            query,
+            doc_filter=documents,
+            user_id=user_id,
+        )
+
+        if not results:
+            from app.rag.debate_engine import DebateReport
+            return DebateReport(
+                query=query,
+                topic=query,
+                position_a=position_a,
+                position_b=position_b,
+                arguments=[],
+                rebuttals=[],
+                final_verdict="Insufficient evidence to debate positions.",
+                verdict_confidence=0.0,
+                sources=[],
+            )
 
         evidence = self._build_feature_evidence(results)
 
@@ -889,10 +1024,37 @@ class RAGService:
 
     # ======================================================
 
-    def generate_knowledge_dna(self, query: str):
+    def generate_knowledge_dna(
+        self,
+        query: str,
+        user_id: str | None = None,
+        documents: list[str] | None = None,
+    ):
         """Generate evidence-grounded Knowledge DNA."""
 
-        results = self.retriever.search(query)
+        logger.info(f"Running Knowledge DNA: {query} (user_id={user_id})")
+
+        results = self._search(
+            query,
+            doc_filter=documents,
+            user_id=user_id,
+        )
+
+        if not results:
+            from app.rag.knowledge_dna import KnowledgeDNAReport
+            return KnowledgeDNAReport(
+                query=query,
+                research_area="N/A",
+                core_topics=[],
+                key_concepts=[],
+                methods=[],
+                findings=[],
+                limitations=[],
+                themes=[],
+                signals=[],
+                relationships=[],
+                sources=[],
+            )
 
         evidence = self._build_feature_evidence(results)
 
@@ -922,10 +1084,21 @@ class RAGService:
 
     # ======================================================
 
-    def generate_knowledge_mind_map(self, query: str):
+    def generate_knowledge_mind_map(
+        self,
+        query: str,
+        user_id: str | None = None,
+        documents: list[str] | None = None,
+    ):
         """Generate an evidence-grounded knowledge mind map."""
 
-        results = self.retriever.search(query)
+        logger.info(f"Running Knowledge Mind Map: {query} (user_id={user_id})")
+
+        results = self._search(
+            query,
+            doc_filter=documents,
+            user_id=user_id,
+        )
 
         evidence = self._build_feature_evidence(results)
 
@@ -937,6 +1110,15 @@ class RAGService:
         response = self.llm.generate_structured(prompt)
 
         if not response.success:
+            if not results:
+                from app.rag.knowledge_mind_map import KnowledgeMindMap
+                return KnowledgeMindMap(
+                    query=query,
+                    research_area=query or "N/A",
+                    nodes=[],
+                    edges=[],
+                    sources=[],
+                )
 
             error = RuntimeError(
                 response.error or "Knowledge mind map generation failed."
@@ -957,10 +1139,32 @@ class RAGService:
 
     # ======================================================
 
-    def find_research_gaps(self, query: str):
+    def find_research_gaps(
+        self,
+        query: str,
+        user_id: str | None = None,
+        documents: list[str] | None = None,
+    ):
         """Identify evidence-grounded research gaps."""
 
-        results = self.retriever.search(query)
+        logger.info(f"Running Research Gaps: {query} (user_id={user_id})")
+
+        results = self._search(
+            query,
+            doc_filter=documents,
+            user_id=user_id,
+        )
+
+        if not results:
+            from app.rag.research_gap_finder import ResearchGapReport
+            return ResearchGapReport(
+                query=query,
+                research_area="N/A",
+                existing_findings=[],
+                reported_limitations=[],
+                gaps=[],
+                sources=[],
+            )
 
         evidence = self._build_feature_evidence(results)
 
@@ -990,16 +1194,25 @@ class RAGService:
 
     # ======================================================
 
-    def generate_visual_answer(self, query: str):
+    def generate_visual_answer(
+        self,
+        query: str,
+        user_id: str | None = None,
+        documents: list[str] | None = None,
+    ):
         """Generate an evidence-grounded visual answer specification."""
 
         if not query or not query.strip():
 
             raise ValueError("Query must not be empty.")
 
-        retrieval_results = self.retriever.search(
+        logger.info(f"Running Visual Answer: {query} (user_id={user_id})")
+
+        retrieval_results = self._search(
             query,
             top_k=5,
+            doc_filter=documents,
+            user_id=user_id,
         )
 
         if not retrieval_results:
@@ -1096,3 +1309,140 @@ Rules:
                 raise ValueError(
                     "Visual answer remained invalid after one repair attempt."
                 ) from repair_error
+
+    # ======================================================
+    # REASONING ENGINE (SRINIDHI'S PIPELINE)
+    # ======================================================
+
+    def reason(
+        self,
+        query: str,
+        doc_filter: list[str] | set[str] | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Execute Srinidhi's multi-step reasoning pipeline directly.
+        """
+        if not query or not query.strip():
+            raise ValueError("Query must not be empty.")
+
+        logger.info(f"Running multi-step reasoning: {query} (user_id={user_id})")
+        return self.reasoning_engine.reason(
+            query.strip(),
+            doc_filter=doc_filter,
+            user_id=user_id,
+        )
+
+    # ======================================================
+    # QUERY ASSISTANT CHATBOT HELPER
+    # ======================================================
+
+    def query_assistant(
+        self,
+        query: str,
+        task: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        AI Research Assistant chatbot helper.
+        Clarifies intent, refines vague queries, and recommends the optimal UNKNOWN tool.
+        """
+        if not query or not query.strip():
+            raise ValueError("Query must not be empty.")
+
+        cleaned_query = query.strip()
+        system_prompt = f"""You are the UNKNOWN Academic Query Assistant.
+Your goal is to transform user queries into precise, high-yield academic research prompts and select the best specialized tool.
+
+Available UNKNOWN Tools:
+- "Research Assistant": Standard factual or descriptive Q&A from literature.
+- "Multi-Step Reasoning": Complex analytical or causal questions requiring decomposed sub-questions.
+- "Verify Claim": Assessing whether a specific factual hypothesis/assertion is supported.
+- "Discover Concept": Reverse-engineering a technical concept from an informal description.
+- "Contradictions": Detecting conflicting claims or disputes across papers.
+- "Compare Research": Comparing 2 to 10 entities, techniques, or algorithms across aspects.
+- "Research Gaps": Identifying open questions, unresolved limitations, or future directions.
+- "Research Debate": Formulating two opposing intellectual perspectives.
+- "Knowledge DNA": Deconstructing foundational concepts, methods, findings, and themes.
+- "Knowledge Mind Map": Graph-based conceptual and relationship visualization.
+- "Adaptive Answer": Producing custom-depth explanations for beginners to experts.
+- "Visual Answer": Step-by-step visual, table, or flowchart breakdown.
+
+Input Query: "{cleaned_query}"
+Current Task: "{task or 'General'}"
+
+Return ONLY valid JSON:
+{{
+  "refined_query": "...",
+  "suggested_task": "...",
+  "explanation": "...",
+  "alternative_queries": ["...", "..."],
+  "tips": ["..."]
+}}""".strip()
+
+        try:
+            resp = self.llm.generate_structured(system_prompt)
+            if resp.success and resp.answer:
+                cleaned = re.sub(r"^```(?:json)?\s*", "", resp.answer.strip(), flags=re.IGNORECASE)
+                cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+                data = json.loads(cleaned)
+                if isinstance(data, dict) and "refined_query" in data and "suggested_task" in data:
+                    return {
+                        "original_query": cleaned_query,
+                        "refined_query": str(data.get("refined_query", cleaned_query)),
+                        "suggested_task": str(data.get("suggested_task", "Research Assistant")),
+                        "explanation": str(data.get("explanation", "Optimized for academic evidence retrieval.")),
+                        "alternative_queries": list(data.get("alternative_queries", [])),
+                        "tips": list(data.get("tips", ["Use specific terminology found in peer-reviewed abstracts."])),
+                    }
+        except Exception as exc:
+            logger.warning(f"LLM query assistant failed: {exc}")
+
+        # Rule-based fallback
+        low = cleaned_query.lower()
+        if any(w in low for w in ["compare", "vs", "versus", "difference between", "better than"]):
+            suggested = "Compare Research"
+            refined = f"Comparative analysis: {cleaned_query}"
+            explanation = "Detected comparison keywords. The Compare Research tool structures entities and evaluation criteria."
+        elif any(w in low for w in ["verify", "is it true", "fact check", "claim", "proven"]):
+            suggested = "Verify Claim"
+            refined = f"Evaluate the claim: {cleaned_query}"
+            explanation = "Detected verification intent. The Verify Claim tool validates statements against citations."
+        elif any(w in low for w in ["gap", "limitation", "open question", "future work", "unresolved"]):
+            suggested = "Research Gaps"
+            refined = f"Systematic identification of research gaps regarding {cleaned_query}"
+            explanation = "Detected exploratory gap intent. The Research Gaps tool isolates unaddressed challenges in literature."
+        elif any(w in low for w in ["why", "how does", "mechanism", "causal", "cause"]):
+            suggested = "Multi-Step Reasoning"
+            refined = f"Multi-step causal and analytical breakdown of {cleaned_query}"
+            explanation = "Detected analytical inquiry. Srinidhi's Reasoning Engine decomposes queries into multi-hop subquestions."
+        elif any(w in low for w in ["conflict", "contradict", "disagree", "dispute", "debate"]):
+            suggested = "Contradictions"
+            refined = f"Conflicting evidence and divergent findings regarding {cleaned_query}"
+            explanation = "Detected contradiction/dispute intent. Contradictions tool locates opposing evidence."
+        elif any(w in low for w in ["mind map", "graph", "relations", "connect"]):
+            suggested = "Knowledge Mind Map"
+            refined = f"Conceptual mind map and relational structure of {cleaned_query}"
+            explanation = "Detected relational structure intent. Knowledge Mind Map generates interactive concept DAGs."
+        elif any(w in low for w in ["what is called", "what term", "concept for", "forgot the name"]):
+            suggested = "Discover Concept"
+            refined = cleaned_query
+            explanation = "Detected term discovery intent. Discover Concept matches informal descriptions to formal concepts."
+        else:
+            suggested = "Research Assistant"
+            refined = f"Investigating the principles, evidence, and state-of-the-art of {cleaned_query}"
+            explanation = "Formulated query with academic terminology for maximum lexical and semantic retrieval precision."
+
+        return {
+            "original_query": cleaned_query,
+            "refined_query": refined,
+            "suggested_task": suggested,
+            "explanation": explanation,
+            "alternative_queries": [
+                f"Empirical evaluation of {cleaned_query}",
+                f"Theoretical framework and methodology in {cleaned_query}",
+            ],
+            "tips": [
+                "Specify target performance metrics or experimental variables.",
+                "Mention key authors, model names, or benchmark datasets.",
+            ],
+        }

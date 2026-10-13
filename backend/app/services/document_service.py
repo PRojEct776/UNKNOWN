@@ -13,12 +13,14 @@ Compatible with:
 """
 
 import json
+import shutil
 from pathlib import Path
 
 import faiss
 import numpy as np
 
 from app.rag.config import settings
+from app.rag.document_eligibility import is_test_document
 
 # ==========================================================
 # Project Paths
@@ -211,7 +213,7 @@ def verify_document_embeddings(document_name: str) -> dict:
 # ==========================================================
 
 
-def build_document_metadata(document_name: str) -> dict:
+def build_document_metadata(document_name: str, user_id: str = "default_user") -> dict:
     """
     Assemble metadata from the UNKNOWN pipeline.
 
@@ -250,6 +252,8 @@ def build_document_metadata(document_name: str) -> dict:
         # --------------------------
         "document": doc_json.get("source_file", document_name),
         "title": doc_json.get("title", Path(document_name).stem),
+        "user_id": user_id,
+        "is_test_document": is_test_document(document_name),
         "document_type": str(doc_json.get("document_type", "unknown"))
         .lstrip(".")
         .lower(),
@@ -325,7 +329,7 @@ def load_saved_metadata(document_name: str) -> dict:
 # ==========================================================
 
 
-def ingest_document(file_path: Path) -> dict:
+def ingest_document(file_path: Path, user_id: str = "default_user") -> dict:
     """
     Ingest, process, chunk, and index a new research document.
 
@@ -343,31 +347,70 @@ def ingest_document(file_path: Path) -> dict:
     from app.rag.faiss_index_builder import FAISSIndexBuilder
     from app.rag.scoring import calculate_document_iq
 
-    loader = DocumentLoader()
-    doc_json = loader.create_document_json(file_path)
-    loader.save_document_json(doc_json)
+    # Create safety backups of working index files to prevent corruption if rebuild fails
+    files_to_backup = [
+        CHUNK_DIR / "chunks.json",
+        VECTOR_DIR / "bm25_index.pkl",
+        VECTOR_DIR / "faiss.index",
+        VECTOR_DIR / "chunk_embeddings.npy",
+        VECTOR_DIR / "faiss_metadata.json",
+    ]
+    backup_map = {}
+    for src_file in files_to_backup:
+        if src_file.exists():
+            bak_file = src_file.with_name(f"{src_file.name}.bak")
+            try:
+                shutil.copy2(src_file, bak_file)
+                backup_map[src_file] = bak_file
+            except Exception:
+                pass
 
-    chunker = DocumentChunker()
-    all_chunks = chunker.create_chunks()
+    try:
+        loader = DocumentLoader()
+        doc_json = loader.create_document_json(file_path)
+        loader.save_document_json(doc_json)
 
-    bm25_builder = BM25IndexBuilder()
-    bm25_builder.build_index()
+        chunker = DocumentChunker()
+        all_chunks = chunker.create_chunks()
 
-    faiss_builder = FAISSIndexBuilder()
-    faiss_builder.build_index()
+        bm25_builder = BM25IndexBuilder()
+        bm25_builder.build_index()
 
-    metadata = build_document_metadata(file_path.name)
-    iq_report = calculate_document_iq(metadata)
-    metadata["document_iq"] = iq_report
-    save_document_metadata(metadata)
+        faiss_builder = FAISSIndexBuilder()
+        faiss_builder.build_index()
 
-    return {
-        "status": "success",
-        "document": file_path.name,
-        "title": doc_json.get("title", file_path.stem),
-        "total_pages": doc_json.get("total_pages", 1),
-        "total_words": doc_json.get("total_words", 0),
-        "total_chunks": len(all_chunks),
-        "document_chunks": count_document_chunks(file_path.name),
-        "document_iq": iq_report,
-    }
+        metadata = build_document_metadata(file_path.name, user_id=user_id)
+        iq_report = calculate_document_iq(metadata)
+        metadata["document_iq"] = iq_report
+        save_document_metadata(metadata)
+
+        # Cleanup backup files on successful ingestion
+        for bak_file in backup_map.values():
+            if bak_file.exists():
+                try:
+                    bak_file.unlink()
+                except Exception:
+                    pass
+
+        return {
+            "status": "success",
+            "document": file_path.name,
+            "user_id": user_id,
+            "title": doc_json.get("title", file_path.stem),
+            "total_pages": doc_json.get("total_pages", 1),
+            "total_words": doc_json.get("total_words", 0),
+            "total_chunks": len(all_chunks),
+            "document_chunks": count_document_chunks(file_path.name),
+            "document_iq": iq_report,
+        }
+
+    except Exception:
+        # Rollback index files to previous valid state
+        for src_file, bak_file in backup_map.items():
+            if bak_file.exists():
+                try:
+                    shutil.copy2(bak_file, src_file)
+                    bak_file.unlink()
+                except Exception:
+                    pass
+        raise

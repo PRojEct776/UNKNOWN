@@ -16,6 +16,8 @@ class QueryRequest(BaseModel):
         max_length=1000,
         description="User's natural-language question.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class Source(BaseModel):
@@ -48,6 +50,8 @@ class ClaimVerificationRequest(BaseModel):
         max_length=1000,
         description="Claim to verify against the indexed documents.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class ClaimVerificationResponse(BaseModel):
@@ -71,6 +75,8 @@ class ContradictionRequest(BaseModel):
         max_length=1000,
         description="Question or topic to analyze for conflicting evidence.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class EvidenceClaimResponse(BaseModel):
@@ -111,6 +117,11 @@ class ResearchComparisonRequest(BaseModel):
         max_length=1000,
         description="Research question or topic to compare.",
     )
+    documents: list[str] | None = Field(
+        default=None,
+        description="Optional list of up to 10 document names to compare across.",
+    )
+    user_id: str | None = None
 
 
 class ResearchGapRequest(BaseModel):
@@ -120,6 +131,8 @@ class ResearchGapRequest(BaseModel):
         max_length=1000,
         description="Research question or topic for gap detection.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class ResearchGapResponse(BaseModel):
@@ -152,6 +165,8 @@ class DebateRequest(BaseModel):
         max_length=500,
         description="Second position in the debate.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class DebateResponse(BaseModel):
@@ -173,6 +188,8 @@ class KnowledgeDNARequest(BaseModel):
         max_length=1000,
         description="Research topic for Knowledge DNA extraction.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class KnowledgeDNAResponse(BaseModel):
@@ -196,6 +213,8 @@ class KnowledgeMindMapRequest(BaseModel):
         max_length=1000,
         description="Research topic for knowledge mind-map generation.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class KnowledgeMindMapResponse(BaseModel):
@@ -213,6 +232,8 @@ class AdaptiveAnswerRequest(BaseModel):
         max_length=1000,
         description="User query for adaptive answer mode selection.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class AdaptiveAnswerResponse(BaseModel):
@@ -227,6 +248,8 @@ class VisualAnswerRequest(BaseModel):
         max_length=1000,
         description="User query for visual answer generation.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class VisualAnswerResponse(BaseModel):
@@ -271,6 +294,8 @@ class ConceptDiscoveryRequest(BaseModel):
         max_length=1000,
         description="Natural-language description of a concept the user cannot remember.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
 
 
 class ConceptDiscoveryResponse(BaseModel):
@@ -282,3 +307,55 @@ class ConceptDiscoveryResponse(BaseModel):
     explanation: str
     evidence: list[str]
     source_chunk_ids: list[str]
+
+
+class ReasoningRequest(BaseModel):
+    """Incoming multi-step reasoning request."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Complex question requiring multi-step reasoning.",
+    )
+    documents: list[str] | None = Field(
+        default=None,
+        description="Optional list of up to 10 document names to scope reasoning over.",
+    )
+    user_id: str | None = None
+
+
+class ReasoningResponse(BaseModel):
+    """Multi-step reasoning response."""
+
+    query: str
+    subquestions: list[str]
+    answer: str
+    sources: list[Source]
+
+
+class QueryAssistantRequest(BaseModel):
+    """Incoming query improvement request."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Raw or vague user question to refine.",
+    )
+    task: str | None = Field(
+        default=None,
+        description="Optional target UNKNOWN tool/task.",
+    )
+    user_id: str | None = None
+
+
+class QueryAssistantResponse(BaseModel):
+    """Refined query and guidance suggestions."""
+
+    original_query: str
+    refined_query: str
+    suggested_task: str
+    explanation: str
+    alternative_queries: list[str]
+    tips: list[str]

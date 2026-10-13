@@ -44,6 +44,9 @@ class KnowledgeMindMap(BaseModel):
     sources: list[dict[str, Any]] = Field(default_factory=list)
 
 
+KnowledgeMindMapReport = KnowledgeMindMap
+
+
 class KnowledgeMindMapEngine:
     """
     Evidence-grounded knowledge mind-map generator.

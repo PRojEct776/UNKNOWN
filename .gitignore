@@ -244,3 +244,17 @@ logs/
 .DS_Store
 Thumbs.db
 desktop.ini
+# UNKNOWN: generated retrieval indexes
+backend/vector_store/bm25_index.pkl
+backend/vector_store/faiss.index
+backend/vector_store/chunk_embeddings.npy
+backend/vector_store/faiss_metadata.json
+backend/datasets/chunks/chunks.json
+
+# UNKNOWN: local uploaded documents and extracted data
+backend/datasets/papers/*
+!backend/datasets/papers/.gitkeep
+backend/datasets/json/*
+!backend/datasets/json/.gitkeep
+backend/app/data/metadata/*
+!backend/app/data/metadata/.gitkeep

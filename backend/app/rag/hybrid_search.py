@@ -7,6 +7,10 @@ using weighted score fusion.
 
 from app.rag.bm25_search import BM25Search
 from app.rag.config import settings
+from app.rag.document_eligibility import (
+    get_user_authorized_documents,
+    is_test_document,
+)
 from app.rag.faiss_search import FAISSSearch
 from app.rag.logger import logger
 
@@ -67,13 +71,23 @@ class HybridSearch:
 
         return results
 
-    def search(self, query: str, top_k: int | None = None):
+    def search(
+        self,
+        query: str,
+        top_k: int | None = None,
+        doc_filter: list[str] | set[str] | None = None,
+        user_id: str | None = None,
+        exclude_test_docs: bool = False,
+    ):
         """
         Perform hybrid retrieval.
 
         Args:
             query (str): User query.
             top_k (int): Number of final results.
+            doc_filter (list | set | None): Optional list of allowed document names.
+            user_id (str | None): Scopes search strictly to documents belonging to this workspace.
+            exclude_test_docs (bool): Whether to exclude sample_ieee and test fixtures.
 
         Returns:
             list: Hybrid ranked results.
@@ -84,9 +98,28 @@ class HybridSearch:
 
         logger.info(f"Hybrid search query: {query}")
 
+        # If user_id is provided, resolve authorized documents for this workspace
+        if user_id is not None:
+            user_authorized = get_user_authorized_documents(
+                user_id=user_id,
+                include_test_docs=not exclude_test_docs,
+            )
+            if doc_filter is not None:
+                allowed_docs = set(doc_filter).intersection(user_authorized)
+            else:
+                allowed_docs = user_authorized
+        else:
+            allowed_docs = set(doc_filter) if doc_filter is not None else None
+
+        # Early exit: If workspace has no documents or allowed_docs is empty set
+        if allowed_docs is not None and len(allowed_docs) == 0:
+            logger.info("No authorized documents available for this query scope.")
+            return []
+
+        multiplier = 4 if (allowed_docs is not None or exclude_test_docs) else 2
         # Retrieve extra candidates from both engines.
-        bm25_results = self.bm25.search(query, top_k * 2)
-        faiss_results = self.faiss.search(query, top_k * 2)
+        bm25_results = self.bm25.search(query, top_k * multiplier)
+        faiss_results = self.faiss.search(query, top_k * multiplier)
 
         # Normalize scores independently.
         bm25_results = self.normalize_scores(bm25_results)
@@ -97,6 +130,12 @@ class HybridSearch:
         # ---------------- BM25 Results ----------------
         for result in bm25_results:
             chunk_id = result["chunk_id"]
+            doc_name = result.get("document", "")
+
+            if allowed_docs is not None and doc_name not in allowed_docs:
+                continue
+            if exclude_test_docs and is_test_document(doc_name):
+                continue
 
             merged_results[chunk_id] = {
                 **result,
@@ -107,6 +146,12 @@ class HybridSearch:
         # ---------------- FAISS Results ----------------
         for result in faiss_results:
             chunk_id = result["chunk_id"]
+            doc_name = result.get("document", "")
+
+            if allowed_docs is not None and doc_name not in allowed_docs:
+                continue
+            if exclude_test_docs and is_test_document(doc_name):
+                continue
 
             if chunk_id not in merged_results:
                 merged_results[chunk_id] = {

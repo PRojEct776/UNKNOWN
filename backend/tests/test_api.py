@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -306,3 +307,96 @@ def test_list_documents():
     response = client.get("/documents")
     assert response.status_code == 200
     assert "documents" in response.json()
+    # Ensure sample_ieee is excluded by default
+    docs = [d.get("document", "") for d in response.json()["documents"]]
+    assert not any("sample_ieee" in d.lower() for d in docs)
+
+
+def test_reason_endpoint():
+    with patch.object(
+        rag_service,
+        "reason",
+        return_value={
+            "query": "How does context compression work?",
+            "subquestions": ["What is compression?", "How is fidelity preserved?"],
+            "answer": "Context compression reduces tokens while retaining key evidence.",
+            "sources": [
+                {
+                    "rank": 1,
+                    "document": "paper1.pdf",
+                    "page": 2,
+                    "chunk_id": "chunk_1",
+                    "hybrid_score": 0.88,
+                    "bm25_score": 0.75,
+                    "faiss_score": 0.92,
+                }
+            ],
+        },
+    ):
+        response = client.post("/reason", json={"query": "How does context compression work?"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["query"] == "How does context compression work?"
+        assert len(data["subquestions"]) == 2
+        assert "Context compression" in data["answer"]
+        assert len(data["sources"]) == 1
+        assert data["sources"][0]["document"] == "paper1.pdf"
+
+
+def test_query_assistant_endpoint():
+    with patch.object(
+        rag_service,
+        "query_assistant",
+        return_value={
+            "original_query": "compare adaptive vs static",
+            "refined_query": "Comparative analysis between adaptive retrieval and static top-k RAG",
+            "suggested_task": "Compare Research",
+            "explanation": "Detected comparative intent.",
+            "alternative_queries": ["Adaptive vs static RAG benchmark"],
+            "tips": ["Specify benchmark dataset."],
+        },
+    ):
+        response = client.post("/query-assistant", json={"query": "compare adaptive vs static"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["suggested_task"] == "Compare Research"
+        assert "Comparative analysis" in data["refined_query"]
+        assert len(data["alternative_queries"]) == 1
+
+
+def test_compare_rejects_more_than_ten_documents():
+    too_many_docs = [f"doc_{i}.pdf" for i in range(11)]
+    response = client.post(
+        "/compare",
+        json={
+            "query": "Compare these architectures",
+            "documents": too_many_docs,
+        },
+    )
+    assert response.status_code == 400
+    assert "10 documents" in response.json()["detail"]
+
+
+def test_upload_rejects_duplicate_document():
+    # Attempting to upload content matching sample_ieee metadata hash should be rejected
+    from app.rag.config import settings
+
+    sample_metadata = settings.METADATA_DIR / "sample_ieee_metadata.json"
+    if sample_metadata.exists():
+        with open(sample_metadata, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+            # Create content that produces same hash or upload with same filename if present
+            # We test that duplicate rejection works by uploading a test file twice
+            test_content = b"Unique content for duplicate upload verification in test suite."
+            res1 = client.post(
+                "/documents/upload",
+                files={"file": ("duplicate_test_doc.txt", test_content, "text/plain")},
+            )
+            if res1.status_code == 200:
+                # Second upload with identical content must be rejected
+                res2 = client.post(
+                    "/documents/upload",
+                    files={"file": ("duplicate_test_doc_copy.txt", test_content, "text/plain")},
+                )
+                assert res2.status_code == 400
+                assert "duplicate" in res2.json()["detail"].lower()

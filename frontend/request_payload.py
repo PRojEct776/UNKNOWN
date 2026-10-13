@@ -80,6 +80,16 @@ EXAMPLE_QUERIES: dict[str, list[dict[str, str]]] = {
             ),
         },
     ],
+    "Multi-Step Reasoning": [
+        {
+            "label": "Causal reasoning",
+            "query": "Why does adaptive retrieval improve accuracy compared to static top-k RAG?",
+        },
+        {
+            "label": "Compression & Hallucination",
+            "query": "How do context compression and lossy summarization affect hallucination rates in RAG?",
+        },
+    ],
     "Adaptive Answer": [
         {
             "label": "Why type-specific retrieval?",
@@ -108,6 +118,8 @@ def input_label(feature: str) -> str:
         return "Concept description"
     if feature == FEATURE_DEBATE:
         return "Debate question"
+    if feature == "Multi-Step Reasoning":
+        return "Complex reasoning question"
     return "Research question or input"
 
 
@@ -118,6 +130,8 @@ def input_placeholder(feature: str) -> str:
         return "Describe the concept you want to identify..."
     if feature == FEATURE_DEBATE:
         return "Enter the debate question..."
+    if feature == "Multi-Step Reasoning":
+        return "Enter a multi-part analytical question requiring step-by-step reasoning..."
     return "Enter your question here..."
 
 
@@ -126,19 +140,28 @@ def build_request_payload(
     text: str,
     position_a: str = "",
     position_b: str = "",
-) -> dict[str, str]:
+    documents: list[str] | None = None,
+    user_id: str | None = None,
+) -> dict:
     stripped = text.strip()
     if feature == FEATURE_VERIFY:
-        return {"claim": stripped}
-    if feature == FEATURE_DISCOVER:
-        return {"description": stripped}
-    if feature == FEATURE_DEBATE:
-        return {
+        payload = {"claim": stripped}
+    elif feature == FEATURE_DISCOVER:
+        payload = {"description": stripped}
+    elif feature == FEATURE_DEBATE:
+        payload = {
             "query": stripped,
             "position_a": position_a.strip(),
             "position_b": position_b.strip(),
         }
-    return {"query": stripped}
+    else:
+        payload = {"query": stripped}
+
+    if documents:
+        payload["documents"] = documents
+    if user_id:
+        payload["user_id"] = user_id
+    return payload
 
 
 def request_is_ready(
