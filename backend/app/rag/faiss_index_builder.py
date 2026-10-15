@@ -43,20 +43,19 @@ class FAISSIndexBuilder:
         # Extract chunk text
         texts = [chunk["text"] for chunk in chunks]
 
-        logger.info("Generating semantic embeddings...")
-
-        embeddings = embed_texts(texts)
-
-        embeddings = np.array(embeddings, dtype=np.float32)
-
-        logger.info(f"Embedding matrix shape: {embeddings.shape}")
-
-        dimension = embeddings.shape[1]
-
-        # Inner Product + normalized embeddings = cosine similarity
-        index = faiss.IndexFlatIP(dimension)
-
-        index.add(embeddings)
+        if not texts:
+            dimension = 384
+            index = faiss.IndexFlatIP(dimension)
+            embeddings = np.empty((0, dimension), dtype=np.float32)
+        else:
+            logger.info("Generating semantic embeddings...")
+            embeddings = embed_texts(texts)
+            embeddings = np.array(embeddings, dtype=np.float32)
+            logger.info(f"Embedding matrix shape: {embeddings.shape}")
+            dimension = embeddings.shape[1]
+            # Inner Product + normalized embeddings = cosine similarity
+            index = faiss.IndexFlatIP(dimension)
+            index.add(embeddings)
 
         logger.info(f"Indexed {index.ntotal} vectors.")
 

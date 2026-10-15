@@ -67,13 +67,19 @@ class HybridSearch:
 
         return results
 
-    def search(self, query: str, top_k: int | None = None):
+    def search(
+        self,
+        query: str,
+        top_k: int | None = None,
+        document_names: list[str] | None = None,
+    ):
         """
         Perform hybrid retrieval.
 
         Args:
             query (str): User query.
             top_k (int): Number of final results.
+            document_names (list[str], optional): Scope search to specified documents.
 
         Returns:
             list: Hybrid ranked results.
@@ -82,13 +88,21 @@ class HybridSearch:
         if top_k is None:
             top_k = settings.TOP_K_RESULTS
 
-        logger.info(f"Hybrid search query: {query}")
+        doc_filter = set(document_names) if document_names else None
 
-        # Retrieve extra candidates from both engines.
-        bm25_results = self.bm25.search(query, top_k * 2)
-        faiss_results = self.faiss.search(query, top_k * 2)
+        # Expand budget for multi-document comparisons/queries to guarantee coverage across all selected papers
+        if doc_filter and len(doc_filter) > 1:
+            effective_top_k = max(top_k, min(len(doc_filter) * 2, 30))
+        else:
+            effective_top_k = top_k
 
-        # Normalize scores independently.
+        logger.info(f"Hybrid search query: {query} (scoped to {len(doc_filter) if doc_filter else 'all'} docs)")
+
+        # Retrieve extra candidates from both engines
+        bm25_results = self.bm25.search(query, effective_top_k * 2, document_names=document_names)
+        faiss_results = self.faiss.search(query, effective_top_k * 2, document_names=document_names)
+
+        # Normalize scores independently
         bm25_results = self.normalize_scores(bm25_results)
         faiss_results = self.normalize_scores(faiss_results)
 
@@ -121,25 +135,39 @@ class HybridSearch:
         hybrid_results = []
 
         for result in merged_results.values():
-
             hybrid_score = (
                 self.alpha * result["bm25_score"] + self.beta * result["faiss_score"]
             )
-
             result["hybrid_score"] = round(hybrid_score, 4)
-
             hybrid_results.append(result)
 
         # Sort by hybrid score (highest first)
         hybrid_results.sort(key=lambda item: item["hybrid_score"], reverse=True)
 
-        # Final top-k ranked results
-        final_results = hybrid_results[:top_k]
+        # Balanced multi-document selection:
+        # Guarantee that every selected document with available matching chunks is represented
+        if doc_filter and len(doc_filter) > 1:
+            selected_final = []
+            for doc in doc_filter:
+                doc_chunks = [r for r in hybrid_results if r.get("document") == doc]
+                for chunk in doc_chunks[:2]:
+                    if chunk not in selected_final:
+                        selected_final.append(chunk)
+
+            for chunk in hybrid_results:
+                if len(selected_final) >= effective_top_k:
+                    break
+                if chunk not in selected_final:
+                    selected_final.append(chunk)
+
+            selected_final.sort(key=lambda item: item["hybrid_score"], reverse=True)
+            final_results = selected_final[:effective_top_k]
+        else:
+            final_results = hybrid_results[:effective_top_k]
 
         for rank, result in enumerate(final_results, start=1):
             result["rank"] = rank
 
-        # NEW: Useful logging for Sprint 3 integration
         logger.info(f"Retrieved {len(final_results)} chunks.")
 
         return final_results

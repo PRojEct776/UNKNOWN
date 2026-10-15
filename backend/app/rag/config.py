@@ -75,11 +75,15 @@ class Settings:
     # ------------------------------------------------------
     # Gemini Configuration
     # ------------------------------------------------------
-    GOOGLE_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GOOGLE_API_KEY: str = (
+        os.getenv("GEMINI_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+        or ""
+    )
 
     GEMINI_MODEL: str = os.getenv(
         "MODEL_NAME",
-        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
     )
 
     # Provider timeout (milliseconds)
@@ -93,7 +97,7 @@ class Settings:
 
     TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.2"))
 
-    MAX_OUTPUT_TOKENS: int = int(os.getenv("MAX_OUTPUT_TOKENS", "2048"))
+    MAX_OUTPUT_TOKENS: int = int(os.getenv("MAX_OUTPUT_TOKENS", "8192"))
     # ------------------------------------------------------
     # Multi-LLM Provider Configuration
     # ------------------------------------------------------
@@ -106,7 +110,7 @@ class Settings:
 
     CORS_ORIGINS: str = os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:5173",
+        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174",
     )
 
     # ------------------------------------------------------
@@ -155,9 +159,11 @@ class Settings:
     )
 
     # ------------------------------------------------------
-    # File Encoding
+    # File Encoding & Collection Capacity Limits
     # ------------------------------------------------------
     DEFAULT_ENCODING: str = "utf-8"
+    MAX_COLLECTION_PAPERS: int = int(os.getenv("MAX_COLLECTION_PAPERS", "25"))
+    MAX_FILE_SIZE_BYTES: int = int(os.getenv("MAX_FILE_SIZE_BYTES", str(50 * 1024 * 1024)))
 
     def validate(self) -> None:
         """Validate configuration values that affect runtime behavior."""

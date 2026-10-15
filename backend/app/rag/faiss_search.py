@@ -34,13 +34,19 @@ class FAISSSearch:
 
         logger.info(f"Loaded FAISS index with {self.index.ntotal} vectors.")
 
-    def search(self, query: str, top_k: int | None = None):
+    def search(
+        self,
+        query: str,
+        top_k: int | None = None,
+        document_names: list[str] | None = None,
+    ):
         """
         Perform semantic similarity search.
 
         Args:
             query (str): User query.
             top_k (int): Number of results to return.
+            document_names (list[str], optional): Scope search to specified documents.
 
         Returns:
             list: Ranked semantic search results.
@@ -49,25 +55,33 @@ class FAISSSearch:
         if top_k is None:
             top_k = settings.TOP_K_RESULTS
 
+        if not self.metadata or self.index.ntotal == 0:
+            return []
+
+        doc_filter = set(document_names) if document_names else None
+
         # Embed query (force float32 for FAISS compatibility)
         query_embedding = embed_text(query).reshape(1, -1).astype(np.float32)  # type: ignore
 
-        similarities, indices = self.index.search(query_embedding, top_k)
+        # Retrieve extra candidates from FAISS when filtering by document
+        fetch_k = min(self.index.ntotal, max(top_k * 4, 50)) if doc_filter else top_k
+
+        similarities, indices = self.index.search(query_embedding, fetch_k)
 
         results = []
 
-        for rank, (score, idx) in enumerate(
-            zip(similarities[0], indices[0]),
-            start=1,
-        ):
-            if idx == -1:
+        for score, idx in zip(similarities[0], indices[0]):
+            if idx == -1 or idx >= len(self.metadata):
                 continue
 
             chunk = self.metadata[idx]
 
+            if doc_filter is not None and chunk.get("document") not in doc_filter:
+                continue
+
             results.append(
                 {
-                    "rank": rank,
+                    "rank": len(results) + 1,
                     "score": round(float(score), 4),
                     "chunk_id": chunk["chunk_id"],
                     "document": chunk["document"],
@@ -75,6 +89,9 @@ class FAISSSearch:
                     "text": chunk["text"],
                 }
             )
+
+            if len(results) == top_k:
+                break
 
         return results
 

@@ -1,0 +1,36 @@
+{
+    "document": "UNKNOWN_Test_Research_Packet.docx",
+    "title": "UNKNOWN_Test_Research_Packet",
+    "document_type": "docx",
+    "document_hash": "762d259cb8dadf09489988722d8a12581a8f2259480a817192438a49c9ed00e4",
+    "pages": 1,
+    "chunks": 3,
+    "text_length": 1136,
+    "estimated_read_time": 5.68,
+    "embedding_status": true,
+    "ocr_required": false,
+    "ocr_quality": 1.0,
+    "metadata_completeness": 1.0,
+    "document_iq": {
+        "document": "UNKNOWN_Test_Research_Packet.docx",
+        "title": "UNKNOWN_Test_Research_Packet",
+        "iq_score": 80.68,
+        "grade": "A",
+        "health": "Very Good",
+        "metrics": {
+            "extraction_score": 5.68,
+            "chunk_score": 20.0,
+            "embedding_score": 20,
+            "ocr_score": 20,
+            "metadata_score": 15.0
+        },
+        "pipeline": {
+            "pages": 1,
+            "chunks": 3,
+            "text_length": 1136,
+            "chunk_density": 3.0,
+            "embedding_status": true,
+            "metadata_completeness": 1.0
+        }
+    }
+}

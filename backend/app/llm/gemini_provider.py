@@ -9,6 +9,7 @@ thinking tokens count against max_output_tokens.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import httpx
@@ -107,6 +108,13 @@ class GeminiProvider(BaseProvider):
 
         return kwargs
 
+    def _candidate_models(self) -> list[str]:
+        candidates = [self.model]
+        for fallback in ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite"):
+            if fallback not in candidates:
+                candidates.append(fallback)
+        return candidates
+
     def _call(self, prompt: str, system: str | None = None) -> str:
         config = (
             types.GenerateContentConfig(
@@ -116,16 +124,40 @@ class GeminiProvider(BaseProvider):
             else self._config
         )
 
-        response = self.client.models.generate_content(  # type: ignore
-            model=self.model,
-            contents=prompt,
-            config=config,
-        )
+        last_error = None
+        for model_name in self._candidate_models():
+            max_attempts = 2
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    response = self.client.models.generate_content(  # type: ignore
+                        model=model_name,
+                        contents=prompt,
+                        config=config,
+                    )
 
-        text = response.text
-        if text and text.strip():
-            return text
-        raise self._empty_error(response)
+                    text = response.text
+                    if text and text.strip():
+                        return text
+                    raise self._empty_error(response)
+                except errors.APIError as exc:
+                    last_error = exc
+                    if exc.code in (500, 502, 503, 504, 429):
+                        logger.warning(
+                            "Gemini API transient error (%s) on model %s (attempt %s/%s).",
+                            exc.code,
+                            model_name,
+                            attempt,
+                            max_attempts,
+                        )
+                        if attempt < max_attempts:
+                            time.sleep(1)
+                            continue
+                        break
+                    raise
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Gemini failed after retries.")
 
     def _call_structured(
         self,
@@ -143,17 +175,41 @@ class GeminiProvider(BaseProvider):
 
         config = types.GenerateContentConfig(**config_kwargs)
 
-        response = self.client.models.generate_content(  # type: ignore
-            model=self.model,
-            contents=prompt,
-            config=config,
-        )
+        last_error = None
+        for model_name in self._candidate_models():
+            max_attempts = 2
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    response = self.client.models.generate_content(  # type: ignore
+                        model=model_name,
+                        contents=prompt,
+                        config=config,
+                    )
 
-        text = response.text
-        if text and text.strip():
-            return text
+                    text = response.text
+                    if text and text.strip():
+                        return text
 
-        raise self._empty_error(response)
+                    raise self._empty_error(response)
+                except errors.APIError as exc:
+                    last_error = exc
+                    if exc.code in (500, 502, 503, 504, 429):
+                        logger.warning(
+                            "Gemini API transient error (%s) on model %s (attempt %s/%s).",
+                            exc.code,
+                            model_name,
+                            attempt,
+                            max_attempts,
+                        )
+                        if attempt < max_attempts:
+                            time.sleep(1)
+                            continue
+                        break
+                    raise
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Gemini failed after retries.")
 
     @staticmethod
     def _empty_error(response: Any) -> LLMError:

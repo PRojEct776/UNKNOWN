@@ -43,10 +43,39 @@ class DocumentLoader:
     def _load_pdf(self, file_path: Path) -> list[dict]:
         reader = PdfReader(file_path)
         pages = []
+        tess_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
         for page_number, page in enumerate(reader.pages, start=1):
             raw_text = page.extract_text() or ""
             text = clean_text(raw_text)
+
+            # Fallback to OCR if page has no digital text layer (e.g. scanned papers / raster PDFs)
+            if not text.strip() and hasattr(page, "images") and len(page.images) > 0:
+                try:
+                    import io
+                    from PIL import Image
+                    import pytesseract
+
+                    if Path(tess_cmd).exists():
+                        pytesseract.pytesseract.tesseract_cmd = tess_cmd
+
+                    ocr_parts = []
+                    for img_name, img_obj in page.images.items():
+                        try:
+                            pil_img = Image.open(io.BytesIO(img_obj.data))
+                            # Skip tiny decorative icons/watermarks
+                            if pil_img.width > 200 and pil_img.height > 200:
+                                ocr_res = pytesseract.image_to_string(pil_img)
+                                if ocr_res.strip():
+                                    ocr_parts.append(ocr_res.strip())
+                        except Exception as img_err:
+                            logger.debug(f"Failed to OCR image {img_name}: {img_err}")
+
+                    if ocr_parts:
+                        text = clean_text("\n\n".join(ocr_parts))
+                        logger.info(f"OCR extracted {len(text)} chars from page {page_number} of {file_path.name}")
+                except Exception as ocr_err:
+                    logger.warning(f"OCR fallback unavailable for page {page_number}: {ocr_err}")
 
             pages.append(
                 {
@@ -64,11 +93,25 @@ class DocumentLoader:
     # DOCX Loader
     # ----------------------------------------------------------
     def _load_docx(self, file_path: Path) -> list[dict]:
-        document = DocxDocument(file_path)  # type: ignore
+        try:
+            document = DocxDocument(file_path)  # type: ignore
+        except Exception as exc:
+            raise DocumentExtractionError(f"Corrupted or invalid DOCX document: {exc}") from exc
 
-        text = clean_text(
-            "\n".join(paragraph.text for paragraph in document.paragraphs)
-        )
+        content_parts = []
+        for paragraph in document.paragraphs:
+            stripped = paragraph.text.strip()
+            if stripped:
+                content_parts.append(stripped)
+
+        # Extract structured table content
+        for table in document.tables:
+            for row in table.rows:
+                row_cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if row_cells:
+                    content_parts.append(" | ".join(row_cells))
+
+        text = clean_text("\n\n".join(content_parts))
 
         return [
             {
@@ -84,7 +127,18 @@ class DocumentLoader:
     # TXT Loader
     # ----------------------------------------------------------
     def _load_txt(self, file_path: Path) -> list[dict]:
-        text = clean_text(file_path.read_text(encoding=settings.DEFAULT_ENCODING))
+        raw_text = ""
+        for encoding in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+            try:
+                raw_text = file_path.read_text(encoding=encoding)
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+
+        if not raw_text:
+            raw_text = file_path.read_text(encoding="utf-8", errors="replace")
+
+        text = clean_text(raw_text)
 
         return [
             {

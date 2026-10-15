@@ -61,7 +61,10 @@ class DocumentChunker:
         all_chunks = []
         chunk_counter = 1
 
-        json_files = sorted(settings.JSON_DIR.glob("*.json"))
+        json_files = sorted(
+            settings.JSON_DIR.glob("*.json"),
+            key=lambda p: (0 if "sample_ieee" in p.name.lower() else 1, p.name.lower()),
+        )
 
         logger.info(f"Found {len(json_files)} JSON documents.")
 

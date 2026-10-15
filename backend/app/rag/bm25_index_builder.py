@@ -43,6 +43,8 @@ class BM25IndexBuilder:
 
         # Tokenize every chunk for BM25 indexing.
         corpus = [tokenize_text(chunk["text"]) for chunk in chunks]
+        if not corpus:
+            corpus = [["empty"]]
 
         logger.info("Building BM25 index...")
 

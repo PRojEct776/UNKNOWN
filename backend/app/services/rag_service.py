@@ -38,6 +38,8 @@ Additional capabilities:
 
 """
 
+from typing import Any
+
 from app.api.schemas import (
     ClaimVerificationResponse,
     QueryResponse,
@@ -146,6 +148,28 @@ class RAGService:
         # ==================================================
 
         logger.info("UNKNOWN X RAG Service initialized successfully.")
+
+    def reload_indexes(self):
+        """Reload all search indexes and dependent engines after document ingestion."""
+        self.retriever = HybridSearch()
+        self.context_builder = ContextBuilder(max_chunks=5)
+        self.reasoning_engine = ReasoningEngine(
+            retriever=self.retriever,
+            context_builder=self.context_builder,
+            prompt_engine=self.prompt_engine,
+            llm=self.llm,
+            max_subquestions=3,
+            top_k=5,
+        )
+        self.concept_discovery = ConceptDiscoveryEngine()
+        self.debate_engine = DebateEngine()
+        self.knowledge_dna = KnowledgeDNA()
+        self.knowledge_mind_map = KnowledgeMindMapEngine()
+        self.claim_verifier = ClaimVerifier()
+        self.contradiction_finder = ContradictionFinder()
+        self.research_comparison = ResearchComparisonEngine()
+        self.research_gap_finder = ResearchGapFinder()
+        logger.info("RAG Service indexes and dependent components reloaded successfully.")
 
     # ======================================================
 
@@ -274,15 +298,40 @@ class RAGService:
             for result in results
         ]
 
+    def _search(
+        self,
+        query: str,
+        top_k: int | None = None,
+        document_names: list[str] | None = None,
+    ):
+        """Invoke retriever.search, passing document_names and top_k only if specified."""
+        kwargs: dict[str, Any] = {}
+        if top_k is not None:
+            kwargs["top_k"] = top_k
+        if document_names is not None:
+            kwargs["document_names"] = document_names
+        return self.retriever.search(query, **kwargs)
+
     # ======================================================
 
     # MAIN RAG QUERY
 
     # ======================================================
 
+    def reason(
+        self,
+        user_query: str,
+        document_names: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Execute multi-step reasoning using Srinidhi's ReasoningEngine."""
+        understanding = self.query_understanding.analyze(user_query)
+        normalized_query = understanding.query
+        return self.reasoning_engine.reason(normalized_query, document_names=document_names)
+
     def query(
         self,
         user_query: str,
+        document_names: list[str] | None = None,
     ) -> QueryResponse:
         """
 
@@ -314,7 +363,10 @@ class RAGService:
             logger.info("Routing query to Srinidhi's ReasoningEngine.")
 
             try:
-                reasoning_result = self.reasoning_engine.reason(normalized_query)
+                reasoning_result = self.reasoning_engine.reason(
+                    normalized_query,
+                    document_names=document_names,
+                )
 
                 abstention = (
                     "The retrieved context does not contain enough information."
@@ -375,7 +427,7 @@ class RAGService:
 
         # ==================================================
 
-        results = self.retriever.search(normalized_query)
+        results = self._search(normalized_query, document_names=document_names)
 
         logger.info(f"Retrieved {len(results)} chunks.")
 
@@ -510,7 +562,11 @@ class RAGService:
 
     # ======================================================
 
-    def discover_concept(self, description: str):
+    def discover_concept(
+        self,
+        description: str,
+        document_names: list[str] | None = None,
+    ):
         """
 
         Identify an unknown technical concept from a user's
@@ -525,9 +581,10 @@ class RAGService:
 
         logger.info(f"Running concept discovery: {description}")
 
-        results = self.retriever.search(
+        results = self._search(
             description,
             top_k=10,
+            document_names=document_names,
         )
 
         if not results:
@@ -577,6 +634,7 @@ class RAGService:
     def verify_claim(
         self,
         claim: str,
+        document_names: list[str] | None = None,
     ) -> ClaimVerificationResponse:
         """
 
@@ -594,7 +652,7 @@ class RAGService:
 
         # ==================================================
 
-        results = self.retriever.search(claim)
+        results = self._search(claim, document_names=document_names)
 
         logger.info(f"Retrieved {len(results)} chunks " f"for claim verification.")
 
@@ -673,6 +731,7 @@ class RAGService:
     def find_contradictions(
         self,
         query: str,
+        document_names: list[str] | None = None,
     ):
         """
 
@@ -690,7 +749,7 @@ class RAGService:
 
         # ==================================================
 
-        results = self.retriever.search(query)
+        results = self._search(query, document_names=document_names)
 
         logger.info(f"Retrieved {len(results)} chunks " f"for contradiction analysis.")
 
@@ -757,6 +816,7 @@ class RAGService:
     def compare_research(
         self,
         query: str,
+        document_names: list[str] | None = None,
     ):
         """
 
@@ -774,7 +834,7 @@ class RAGService:
 
         # ==================================================
 
-        results = self.retriever.search(query)
+        results = self._search(query, document_names=document_names)
 
         logger.info(f"Retrieved {len(results)} chunks " f"for research comparison.")
 
@@ -843,10 +903,11 @@ class RAGService:
         query: str,
         position_a: str,
         position_b: str,
+        document_names: list[str] | None = None,
     ):
         """Generate an evidence-grounded AI debate."""
 
-        results = self.retriever.search(query)
+        results = self._search(query, document_names=document_names)
 
         evidence = self._build_feature_evidence(results)
 
@@ -880,10 +941,14 @@ class RAGService:
 
     # ======================================================
 
-    def generate_knowledge_dna(self, query: str):
+    def generate_knowledge_dna(
+        self,
+        query: str,
+        document_names: list[str] | None = None,
+    ):
         """Generate evidence-grounded Knowledge DNA."""
 
-        results = self.retriever.search(query)
+        results = self._search(query, document_names=document_names)
 
         evidence = self._build_feature_evidence(results)
 
@@ -913,10 +978,14 @@ class RAGService:
 
     # ======================================================
 
-    def generate_knowledge_mind_map(self, query: str):
+    def generate_knowledge_mind_map(
+        self,
+        query: str,
+        document_names: list[str] | None = None,
+    ):
         """Generate an evidence-grounded knowledge mind map."""
 
-        results = self.retriever.search(query)
+        results = self._search(query, document_names=document_names)
 
         evidence = self._build_feature_evidence(results)
 
@@ -948,10 +1017,14 @@ class RAGService:
 
     # ======================================================
 
-    def find_research_gaps(self, query: str):
+    def find_research_gaps(
+        self,
+        query: str,
+        document_names: list[str] | None = None,
+    ):
         """Identify evidence-grounded research gaps."""
 
-        results = self.retriever.search(query)
+        results = self._search(query, document_names=document_names)
 
         evidence = self._build_feature_evidence(results)
 
@@ -981,16 +1054,21 @@ class RAGService:
 
     # ======================================================
 
-    def generate_visual_answer(self, query: str):
+    def generate_visual_answer(
+        self,
+        query: str,
+        document_names: list[str] | None = None,
+    ):
         """Generate an evidence-grounded visual answer specification."""
 
         if not query or not query.strip():
 
             raise ValueError("Query must not be empty.")
 
-        retrieval_results = self.retriever.search(
+        retrieval_results = self._search(
             query,
             top_k=5,
+            document_names=document_names,
         )
 
         if not retrieval_results:

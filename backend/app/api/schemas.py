@@ -16,6 +16,10 @@ class QueryRequest(BaseModel):
         max_length=1000,
         description="User's natural-language question.",
     )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
+    )
 
 
 class Source(BaseModel):
@@ -48,6 +52,10 @@ class ClaimVerificationRequest(BaseModel):
         max_length=1000,
         description="Claim to verify against the indexed documents.",
     )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
+    )
 
 
 class ClaimVerificationResponse(BaseModel):
@@ -70,6 +78,10 @@ class ContradictionRequest(BaseModel):
         min_length=1,
         max_length=1000,
         description="Question or topic to analyze for conflicting evidence.",
+    )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
     )
 
 
@@ -111,6 +123,10 @@ class ResearchComparisonRequest(BaseModel):
         max_length=1000,
         description="Research question or topic to compare.",
     )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
+    )
 
 
 class ResearchGapRequest(BaseModel):
@@ -119,6 +135,10 @@ class ResearchGapRequest(BaseModel):
         min_length=1,
         max_length=1000,
         description="Research question or topic for gap detection.",
+    )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
     )
 
 
@@ -152,6 +172,10 @@ class DebateRequest(BaseModel):
         max_length=500,
         description="Second position in the debate.",
     )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
+    )
 
 
 class DebateResponse(BaseModel):
@@ -172,6 +196,10 @@ class KnowledgeDNARequest(BaseModel):
         min_length=1,
         max_length=1000,
         description="Research topic for Knowledge DNA extraction.",
+    )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
     )
 
 
@@ -196,6 +224,10 @@ class KnowledgeMindMapRequest(BaseModel):
         max_length=1000,
         description="Research topic for knowledge mind-map generation.",
     )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
+    )
 
 
 class KnowledgeMindMapResponse(BaseModel):
@@ -213,6 +245,10 @@ class AdaptiveAnswerRequest(BaseModel):
         max_length=1000,
         description="User query for adaptive answer mode selection.",
     )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
+    )
 
 
 class AdaptiveAnswerResponse(BaseModel):
@@ -226,6 +262,10 @@ class VisualAnswerRequest(BaseModel):
         min_length=1,
         max_length=1000,
         description="User query for visual answer generation.",
+    )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
     )
 
 
@@ -271,6 +311,10 @@ class ConceptDiscoveryRequest(BaseModel):
         max_length=1000,
         description="Natural-language description of a concept the user cannot remember.",
     )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
+    )
 
 
 class ConceptDiscoveryResponse(BaseModel):
@@ -282,3 +326,27 @@ class ConceptDiscoveryResponse(BaseModel):
     explanation: str
     evidence: list[str]
     source_chunk_ids: list[str]
+
+
+class ReasoningRequest(BaseModel):
+    """Incoming multi-step reasoning request."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Reasoning question for multi-step decomposition and synthesis.",
+    )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Optional list of document names to scope retrieval to.",
+    )
+
+
+class ReasoningResponse(BaseModel):
+    """Multi-step reasoning API response."""
+
+    query: str
+    subquestions: list[str]
+    answer: str
+    sources: list[Source]

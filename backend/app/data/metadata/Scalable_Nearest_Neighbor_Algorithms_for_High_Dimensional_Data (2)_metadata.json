@@ -1,0 +1,36 @@
+{
+    "document": "Scalable_Nearest_Neighbor_Algorithms_for_High_Dimensional_Data (2).pdf",
+    "title": "Scalable_Nearest_Neighbor_Algorithms_for_High_Dimensional_Data (2)",
+    "document_type": "pdf",
+    "document_hash": "cce08ad9cc664d3387a289e2b5019e8f6d8831dfed6cb160fe048f642122363b",
+    "pages": 14,
+    "chunks": 32,
+    "text_length": 11456,
+    "estimated_read_time": 57.28,
+    "embedding_status": true,
+    "ocr_required": false,
+    "ocr_quality": 1.0,
+    "metadata_completeness": 1.0,
+    "document_iq": {
+        "document": "Scalable_Nearest_Neighbor_Algorithms_for_High_Dimensional_Data (2).pdf",
+        "title": "Scalable_Nearest_Neighbor_Algorithms_for_High_Dimensional_Data (2)",
+        "iq_score": 100.0,
+        "grade": "A+",
+        "health": "Excellent",
+        "metrics": {
+            "extraction_score": 25.0,
+            "chunk_score": 20.0,
+            "embedding_score": 20,
+            "ocr_score": 20,
+            "metadata_score": 15.0
+        },
+        "pipeline": {
+            "pages": 14,
+            "chunks": 32,
+            "text_length": 11456,
+            "chunk_density": 2.29,
+            "embedding_status": true,
+            "metadata_completeness": 1.0
+        }
+    }
+}

@@ -199,9 +199,27 @@ Do not manufacture missing metadata.
             try:
                 value = json.loads(cleaned[start : end + 1])
             except json.JSONDecodeError as error:
-                raise ValueError(
-                    "Knowledge DNA engine returned invalid JSON."
-                ) from error
+                sub = cleaned[start : end + 1]
+                repaired = None
+                for cut in range(len(sub) - 1, max(0, len(sub) - 500), -1):
+                    if sub[cut] in (",", "}", "]"):
+                        test_str = sub[:cut].rstrip(",")
+                        open_braces = test_str.count("{") - test_str.count("}")
+                        open_brackets = test_str.count("[") - test_str.count("]")
+                        closing = ("]" * max(0, open_brackets)) + ("}" * max(0, open_braces))
+                        try:
+                            candidate = json.loads(test_str + closing)
+                            if isinstance(candidate, dict):
+                                repaired = candidate
+                                break
+                        except Exception:
+                            continue
+                if repaired and isinstance(repaired, dict):
+                    value = repaired
+                else:
+                    raise ValueError(
+                        "Knowledge DNA engine returned invalid JSON."
+                    ) from error
 
         if not isinstance(value, dict):
             raise ValueError(  # noqa: TRY004

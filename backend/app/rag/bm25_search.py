@@ -35,13 +35,19 @@ class BM25Search:
 
         logger.info(f"Loaded BM25 index with {len(self.chunks)} chunks.")
 
-    def search(self, query: str, top_k: int | None = None):
+    def search(
+        self,
+        query: str,
+        top_k: int | None = None,
+        document_names: list[str] | None = None,
+    ):
         """
         Perform BM25 search.
 
         Args:
             query (str): User query.
             top_k (int): Number of results to return.
+            document_names (list[str], optional): Scope search to specified documents.
 
         Returns:
             list: Ranked search results.
@@ -61,6 +67,8 @@ class BM25Search:
             range(len(scores)), key=lambda i: scores[i], reverse=True
         )
 
+        doc_filter = set(document_names) if document_names else None
+
         results = []
 
         for idx in ranked_indices:
@@ -70,6 +78,9 @@ class BM25Search:
                 continue
 
             chunk = self.chunks[idx]
+
+            if doc_filter is not None and chunk.get("document") not in doc_filter:
+                continue
 
             results.append(
                 {

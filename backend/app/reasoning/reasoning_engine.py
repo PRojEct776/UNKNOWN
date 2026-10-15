@@ -163,6 +163,7 @@ Main question:
     def retrieve_evidence(
         self,
         subquestions: list[str],
+        document_names: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Retrieve evidence for each sub-question using
@@ -178,10 +179,17 @@ Main question:
 
             logger.info(f"Reasoning retrieval: {subquestion}")
 
-            results = self.retriever.search(
-                subquestion,
-                top_k=self.top_k,
-            )
+            if document_names is not None:
+                results = self.retriever.search(
+                    subquestion,
+                    top_k=self.top_k,
+                    document_names=document_names,
+                )
+            else:
+                results = self.retriever.search(
+                    subquestion,
+                    top_k=self.top_k,
+                )
 
             for result in results:
 
@@ -277,6 +285,7 @@ Additional reasoning requirements:
     def reason(
         self,
         query: str,
+        document_names: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         Execute:
@@ -320,7 +329,7 @@ Additional reasoning requirements:
         # 2. Retrieve
         # -----------------------------------------------
 
-        evidence = self.retrieve_evidence(subquestions)
+        evidence = self.retrieve_evidence(subquestions, document_names=document_names)
 
         # -----------------------------------------------
         # 3. Insufficient evidence
