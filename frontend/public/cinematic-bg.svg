@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="100%" height="100%">
+  <defs>
+    <!-- Sky & Ocean Depth Gradients -->
+    <linearGradient id="ocean-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#041019" />
+      <stop offset="35%" stop-color="#072230" />
+      <stop offset="65%" stop-color="#0b2e3f" />
+      <stop offset="85%" stop-color="#081e2b" />
+      <stop offset="100%" stop-color="#030c12" />
+    </linearGradient>
+
+    <!-- Cyan Horizon Light Glow -->
+    <radialGradient id="cyan-bloom" cx="65%" cy="32%" r="45%">
+      <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.28" />
+      <stop offset="40%" stop-color="#0ea5e9" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Cloud Bank Gradients -->
+    <linearGradient id="cloud-grad-1" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#092838" stop-opacity="0.6" />
+      <stop offset="70%" stop-color="#113f56" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#00f0ff" stop-opacity="0.05" />
+    </linearGradient>
+
+    <!-- Craft Surface Gradient -->
+    <linearGradient id="craft-surface" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e2e8f0" stop-opacity="0.9" />
+      <stop offset="50%" stop-color="#94a3b8" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#475569" stop-opacity="0.7" />
+    </linearGradient>
+
+    <!-- Vignette Mask -->
+    <radialGradient id="vignette" cx="50%" cy="50%" r="70%">
+      <stop offset="50%" stop-color="#000000" stop-opacity="0" />
+      <stop offset="100%" stop-color="#02080d" stop-opacity="0.75" />
+    </radialGradient>
+  </defs>
+
+  <!-- Deep Ocean Base -->
+  <rect width="100%" height="100%" fill="url(#ocean-sky)" />
+
+  <!-- Atmospheric Light Bloom -->
+  <rect width="100%" height="100%" fill="url(#cyan-bloom)" />
+
+  <!-- Stormy Atmospheric Clouds & Water Currents -->
+  <g opacity="0.7">
+    <!-- Sweeping Storm Cloud Waves -->
+    <path d="M -100 280 C 300 200, 700 350, 1100 260 C 1500 170, 1800 320, 2100 240 L 2100 600 L -100 600 Z" fill="url(#cloud-grad-1)" />
+    <path d="M -100 420 C 400 360, 850 490, 1300 400 C 1650 330, 1950 440, 2100 390 L 2100 800 L -100 800 Z" fill="#071b26" opacity="0.65" />
+    
+    <!-- Ocean Wave Crests -->
+    <path d="M 0 680 Q 250 640 500 680 T 1000 680 T 1500 680 T 2000 680" stroke="#00f0ff" stroke-width="1.2" stroke-opacity="0.25" fill="none" />
+    <path d="M 0 740 Q 300 700 600 740 T 1200 740 T 1800 740" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.2" fill="none" />
+    <path d="M 0 820 Q 280 780 560 820 T 1120 820 T 1680 820" stroke="#0284c7" stroke-width="0.8" stroke-opacity="0.2" fill="none" />
+  </g>
+
+  <!-- Giant Atmospheric Stealth Glider / Survey Vessel (Top Left, just like in "ONE LAST FLIGHT") -->
+  <g transform="translate(180, 120) rotate(-18) scale(1.1)" opacity="0.85">
+    <!-- Stealth Vessel Body -->
+    <polygon points="0,0 260,80 140,240 60,190" fill="url(#craft-surface)" filter="drop-shadow(0 20px 30px rgba(0,0,0,0.6))" />
+    <polygon points="0,0 60,190 -120,280 -60,120" fill="#64748b" opacity="0.8" />
+    <polygon points="140,240 260,80 280,180 200,290" fill="#334155" opacity="0.9" />
+    
+    <!-- Hull Panel Lines & Cyan Thruster Glow -->
+    <line x1="0" y1="0" x2="140" y2="240" stroke="#00f0ff" stroke-width="2.5" stroke-opacity="0.85" />
+    <line x1="60" y1="190" x2="200" y2="290" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.6" />
+    <circle cx="140" cy="240" r="3.5" fill="#00f0ff" />
+    <circle cx="200" cy="290" r="2.5" fill="#00f0ff" />
+
+    <!-- Trailing Energy Vapor Wake -->
+    <line x1="140" y1="240" x2="-80" y2="400" stroke="#00f0ff" stroke-width="1.5" stroke-opacity="0.3" stroke-dasharray="10,8" />
+  </g>
+
+  <!-- Soaring Birds / Survey Drones in Flight (direct homage to the reference art) -->
+  <g fill="#e0f2fe" opacity="0.75">
+    <!-- Bird 1 (near craft) -->
+    <path d="M 520 220 Q 535 210 550 220 Q 565 210 580 220 Q 565 215 550 226 Q 535 215 520 220 Z" />
+    <!-- Bird 2 -->
+    <path d="M 720 180 Q 732 172 744 180 Q 756 172 768 180 Q 756 176 744 184 Q 732 176 720 180 Z" transform="scale(0.85) translate(150, 40)" />
+    <!-- Bird 3 -->
+    <path d="M 880 260 Q 890 252 900 260 Q 910 252 920 260 Q 910 256 900 264 Q 890 256 880 260 Z" transform="scale(0.7) translate(380, 80)" />
+    <!-- Bird 4 (lower right) -->
+    <path d="M 1480 340 Q 1495 330 1510 340 Q 1525 330 1540 340 Q 1525 335 1510 346 Q 1495 335 1480 340 Z" />
+    <!-- Bird 5 -->
+    <path d="M 1620 420 Q 1632 412 1644 420 Q 1656 412 1668 420 Q 1656 416 1644 424 Q 1632 416 1620 420 Z" transform="scale(0.8) translate(390, 80)" />
+  </g>
+
+  <!-- Signature Teal/Cyan Rectangular Accent Tabs (as in the reference image!) -->
+  <rect x="0" y="0" width="38" height="42" fill="#00f0ff" opacity="0.9" />
+  <rect x="1882" y="1038" width="38" height="42" fill="#00f0ff" opacity="0.9" />
+
+  <!-- Vignette Shadow Overlay for readability -->
+  <rect width="100%" height="100%" fill="url(#vignette)" />
+</svg>

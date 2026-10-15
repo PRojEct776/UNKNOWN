@@ -1284,7 +1284,7 @@ import os
 _FRONTEND_DIST_DIR = Path(
     os.getenv(
         "FRONTEND_DIST_DIR",
-        str(Path(__file__).resolve().parents[3] / "unknown-frontend-work" / "dist"),
+        str(Path(__file__).resolve().parents[2] / "frontend" / "dist"),
     )
 )
 

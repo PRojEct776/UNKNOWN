@@ -1,0 +1,1 @@
+export { KnowledgeWorkspacePage as SearchPage } from './KnowledgeWorkspacePage';

@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="100%" height="100%">
+  <defs>
+    <!-- Radial Nebulas -->
+    <radialGradient id="glow-cyan" cx="18%" cy="28%" r="40%">
+      <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.22" />
+      <stop offset="50%" stop-color="#0284c7" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#05070f" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow-magenta" cx="82%" cy="35%" r="45%">
+      <stop offset="0%" stop-color="#d946ef" stop-opacity="0.25" />
+      <stop offset="50%" stop-color="#7c3aed" stop-opacity="0.10" />
+      <stop offset="100%" stop-color="#05070f" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow-purple-center" cx="50%" cy="85%" r="55%">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.20" />
+      <stop offset="60%" stop-color="#3b82f6" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#05070f" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Linear Gradients for Ethereal Holographic Tendrils -->
+    <linearGradient id="tendril-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d946ef" stop-opacity="0.7" />
+      <stop offset="50%" stop-color="#8b5cf6" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0" />
+    </linearGradient>
+
+    <linearGradient id="tendril-grad-2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.8" />
+      <stop offset="60%" stop-color="#6366f1" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#a855f7" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Cyber Grid Pattern -->
+    <pattern id="grid-dots" width="48" height="48" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#00f0ff" fill-opacity="0.15" />
+      <circle cx="26" cy="26" r="0.8" fill="#d946ef" fill-opacity="0.12" />
+      <path d="M 48 0 L 0 0 0 48" fill="none" stroke="#1e293b" stroke-width="0.5" stroke-opacity="0.18" />
+    </pattern>
+  </defs>
+
+  <!-- Deep Obsidian Space Base -->
+  <rect width="100%" height="100%" fill="#05070f" />
+
+  <!-- Ambient Light Nebulas (inspired by glowing jellyfish & blockchain holograms) -->
+  <rect width="100%" height="100%" fill="url(#glow-cyan)" />
+  <rect width="100%" height="100%" fill="url(#glow-magenta)" />
+  <rect width="100%" height="100%" fill="url(#glow-purple-center)" />
+
+  <!-- Subtle Perspective Grid -->
+  <rect width="100%" height="100%" fill="url(#grid-dots)" />
+
+  <!-- Ethereal Bioluminescent Jellyfish & Hologram Flow Tendrils (Upper Right) -->
+  <g fill="none" stroke-linecap="round" opacity="0.6">
+    <!-- Fluid Ethereal Ribbons -->
+    <path d="M 1450 -50 C 1580 150, 1680 320, 1550 550 C 1420 780, 1620 950, 1750 1150" stroke="url(#tendril-grad-1)" stroke-width="2.5" />
+    <path d="M 1480 -20 C 1600 180, 1720 340, 1580 580 C 1440 820, 1650 980, 1790 1180" stroke="url(#tendril-grad-1)" stroke-width="1.5" stroke-dasharray="8,6" />
+    <path d="M 1420 -80 C 1520 120, 1620 280, 1500 500 C 1380 720, 1560 920, 1700 1100" stroke="url(#tendril-grad-2)" stroke-width="1.8" />
+    <path d="M 1520 20 C 1650 220, 1760 400, 1630 630 C 1500 860, 1700 1020, 1850 1200" stroke="url(#tendril-grad-1)" stroke-width="1.2" stroke-opacity="0.4" />
+    
+    <!-- Bioluminescent Cap Contour -->
+    <path d="M 1320 120 C 1420 40, 1680 40, 1780 140 C 1720 220, 1380 200, 1320 120 Z" stroke="#d946ef" stroke-width="1.8" stroke-opacity="0.5" fill="none" />
+    <path d="M 1360 110 C 1440 50, 1650 50, 1740 125 C 1680 185, 1410 170, 1360 110 Z" stroke="#00f0ff" stroke-width="1" stroke-opacity="0.35" fill="none" />
+  </g>
+
+  <!-- Left Hologram Network / Floating Constellation Nodes -->
+  <g fill="none" stroke-linecap="round" opacity="0.45">
+    <path d="M -50 450 C 180 380, 290 520, 420 440 C 550 360, 480 620, 720 580" stroke="url(#tendril-grad-2)" stroke-width="2" />
+    <path d="M -20 480 C 210 410, 310 560, 450 470 C 590 380, 520 660, 760 610" stroke="url(#tendril-grad-1)" stroke-width="1.2" stroke-dasharray="6,8" />
+
+    <!-- Isometric Data Node Diamonds -->
+    <g transform="translate(180, 240)">
+      <polygon points="0,-25 25,0 0,25 -25,0" stroke="#00f0ff" stroke-width="1" fill="#00f0ff" fill-opacity="0.1" />
+      <circle cx="0" cy="0" r="3" fill="#00f0ff" />
+    </g>
+    <g transform="translate(320, 340)">
+      <polygon points="0,-18 18,0 0,18 -18,0" stroke="#d946ef" stroke-width="0.8" fill="#d946ef" fill-opacity="0.08" />
+      <circle cx="0" cy="0" r="2.5" fill="#d946ef" />
+    </g>
+    <g transform="translate(480, 280)">
+      <polygon points="0,-22 22,0 0,22 -22,0" stroke="#8b5cf6" stroke-width="1" fill="#8b5cf6" fill-opacity="0.08" />
+      <circle cx="0" cy="0" r="3" fill="#8b5cf6" />
+    </g>
+
+    <!-- Connectors -->
+    <line x1="180" y1="240" x2="320" y2="340" stroke="#00f0ff" stroke-width="0.8" stroke-dasharray="4,4" />
+    <line x1="320" y1="340" x2="480" y2="280" stroke="#d946ef" stroke-width="0.8" stroke-dasharray="4,4" />
+    <line x1="480" y1="280" x2="420" y2="440" stroke="#8b5cf6" stroke-width="0.6" />
+  </g>
+
+  <!-- Glowing Stardust & Quantum Particles -->
+  <g fill="#ffffff" opacity="0.65">
+    <circle cx="240" cy="180" r="1.5" />
+    <circle cx="380" cy="90" r="2.2" fill="#00f0ff" />
+    <circle cx="560" cy="210" r="1.2" />
+    <circle cx="720" cy="140" r="1.8" fill="#d946ef" />
+    <circle cx="890" cy="90" r="1.5" />
+    <circle cx="1050" cy="220" r="2.5" fill="#00f0ff" />
+    <circle cx="1240" cy="110" r="1.2" fill="#a855f7" />
+    <circle cx="1400" cy="240" r="1.8" />
+    <circle cx="1580" cy="160" r="2" fill="#d946ef" />
+    <circle cx="1720" cy="80" r="1.5" fill="#00f0ff" />
+
+    <circle cx="190" cy="680" r="2" fill="#8b5cf6" />
+    <circle cx="450" cy="740" r="1.2" />
+    <circle cx="820" cy="620" r="1.8" fill="#00f0ff" />
+    <circle cx="1120" cy="780" r="2" fill="#d946ef" />
+    <circle cx="1380" cy="690" r="1.5" fill="#8b5cf6" />
+    <circle cx="1660" cy="810" r="1.8" />
+  </g>
+</svg>
