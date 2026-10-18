@@ -95,37 +95,57 @@ def get_user_authorized_documents(
     Return the set of document filenames authorized for a specific user/workspace.
 
     Rules:
-    - If user_id is provided, only documents belonging to user_id are returned.
-    - If user_id has uploaded no documents, returns an empty set() (clean workspace).
-    - If user_id is None, returns all documents in the library.
-    - Test documents are excluded unless include_test_docs=True.
+    - If user_id is an explicitly designated test/demo account (or None for unauthenticated test fallback):
+      Returns documents owned by the user plus baseline sample documents ("default_user" or demo accounts).
+    - If user_id is a fresh/new user (not in designated demo accounts):
+      Returns ONLY documents where metadata user_id matches user_id. Fresh accounts start with set() (empty workspace).
+    - Test documents (sample_ieee, duplicate_test_doc, etc.) are excluded unless include_test_docs=True.
     """
+    from app.auth import is_demo_account
+    from app.rag.utils import list_supported_documents
+
     authorized: set[str] = set()
+    user_is_demo = is_demo_account(user_id) or user_id is None
 
-    if not settings.METADATA_DIR.exists():
-        return authorized
+    for paper_path in list_supported_documents(settings.PAPERS_DIR):
+        doc_name = paper_path.name
+        stem = paper_path.stem
 
-    for meta_path in settings.METADATA_DIR.glob("*_metadata.json"):
-        try:
-            with open(meta_path, "r", encoding="utf-8") as f:
-                meta = json.load(f)
-                doc_name = meta.get("document", "")
-                if not doc_name:
-                    continue
+        doc_user = "default_user"
+        is_test = is_test_document(doc_name)
 
-                # Exclude test documents unless requested
-                if not include_test_docs and is_test_document(doc_name, meta):
-                    continue
+        # Check metadata dir
+        meta_file = settings.METADATA_DIR / f"{stem}_metadata.json"
+        if meta_file.exists():
+            try:
+                with open(meta_file, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                    if "user_id" in meta:
+                        doc_user = meta["user_id"]
+                    if meta.get("is_test_document"):
+                        is_test = True
+            except Exception:
+                pass
 
-                doc_user = meta.get("user_id")
+        # Check json dir
+        json_file = settings.JSON_DIR / f"{stem}.json"
+        if json_file.exists():
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    doc_json = json.load(f)
+                    if "user_id" in doc_json:
+                        doc_user = doc_json["user_id"]
+            except Exception:
+                pass
 
-                # If user_id filter is specified, enforce strict ownership
-                if user_id is not None:
-                    if doc_user == user_id:
-                        authorized.add(doc_name)
-                else:
-                    authorized.add(doc_name)
-        except Exception as exc:
-            logger.debug(f"Error reading metadata {meta_path}: {exc}")
+        if not include_test_docs and is_test:
+            continue
+
+        if user_is_demo:
+            if doc_user == user_id or doc_user == "default_user" or is_demo_account(doc_user):
+                authorized.add(doc_name)
+        else:
+            if doc_user == user_id:
+                authorized.add(doc_name)
 
     return authorized

@@ -58,6 +58,9 @@ class FAISSSearch:
         if not self.metadata or self.index.ntotal == 0:
             return []
 
+        if document_names is not None and len(document_names) == 0:
+            return []
+
         doc_filter = set(document_names) if document_names else None
 
         # Embed query (force float32 for FAISS compatibility)

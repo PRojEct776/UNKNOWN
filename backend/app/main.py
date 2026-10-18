@@ -16,10 +16,14 @@ from fastapi.staticfiles import StaticFiles
 from app.auth import (
     SessionCreateRequest,
     SessionResponse,
+    is_demo_account,
     resolve_authenticated_workspace,
     session_manager,
 )
-from app.rag.document_eligibility import is_test_document
+from app.rag.document_eligibility import (
+    get_user_authorized_documents,
+    is_test_document,
+)
 
 from app.api.schemas import (
     AdaptiveAnswerRequest,
@@ -104,6 +108,65 @@ def health_check():
 
 
 # ============================================================
+# AUTHENTICATION & WORKSPACE SESSION
+# ============================================================
+
+
+@app.post("/auth/session", response_model=SessionResponse)
+def create_session(payload: SessionCreateRequest | None = None):
+    """Create or register an authenticated workspace session."""
+    workspace = payload.workspace_id if payload else None
+    session_data = session_manager.create_session(workspace_id=workspace)
+    return SessionResponse(**session_data)
+
+
+@app.get("/auth/session")
+def get_current_session(
+    request: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+    x_user_id: str | None = Header(None),
+):
+    """Retrieve current workspace session identity and disclosure."""
+    active_user, is_auth = resolve_authenticated_workspace(
+        request, authorization, x_session_token, x_user_id=x_user_id
+    )
+    return {
+        "user_id": active_user,
+        "is_authenticated": is_auth,
+        "is_demo_account": is_demo_account(active_user),
+        "security_level": "token_authenticated" if is_auth else "local_workspace_isolation",
+        "notice": "Workspace identity enforced at API gateway. Local prototype session without external IdP.",
+    }
+
+
+def resolve_effective_documents(
+    request: Request,
+    authorization: str | None = None,
+    x_session_token: str | None = None,
+    x_user_id: str | None = None,
+    requested_documents: list[str] | None = None,
+) -> tuple[str, list[str]]:
+    """
+    Resolve active user and enforce strict workspace document authorization.
+    Returns (active_user, scoped_documents).
+    """
+    from app.rag.document_eligibility import get_user_authorized_documents
+
+    active_user, _ = resolve_authenticated_workspace(
+        request, authorization, x_session_token, x_user_id=x_user_id
+    )
+    authorized_docs = get_user_authorized_documents(active_user, include_test_docs=True)
+
+    if requested_documents is not None:
+        scoped = [d for d in requested_documents if d in authorized_docs]
+    else:
+        scoped = list(authorized_docs)
+
+    return active_user, scoped
+
+
+# ============================================================
 # DOCUMENT MANAGEMENT ENDPOINTS
 # ============================================================
 
@@ -115,6 +178,7 @@ def list_documents(
     include_test_docs: bool = False,
     authorization: str | None = Header(None),
     x_session_token: str | None = Header(None),
+    x_user_id: str | None = Header(None),
 ):
     """
     List indexed research documents.
@@ -125,23 +189,21 @@ def list_documents(
         count_document_chunks,
         load_document_json,
     )
+    from app.rag.document_eligibility import get_user_authorized_documents
 
-    active_user, has_token = resolve_authenticated_workspace(
-        request, authorization, x_session_token, client_user_id=user_id
+    active_user, _ = resolve_authenticated_workspace(
+        request, authorization, x_session_token, x_user_id=x_user_id, client_user_id=user_id
     )
-    effective_user = active_user if (has_token or user_id) else None
+    authorized_docs = get_user_authorized_documents(active_user, include_test_docs=include_test_docs)
 
     documents = []
     for paper_path in list_supported_documents(settings.PAPERS_DIR):
         doc_name = paper_path.name
-        if not include_test_docs and is_test_document(doc_name):
+        if doc_name not in authorized_docs:
             continue
 
         try:
             doc_data = load_document_json(doc_name)
-            if effective_user and doc_data.get("user_id") and doc_data.get("user_id") != effective_user:
-                continue
-
             chunks = count_document_chunks(doc_name)
             documents.append(
                 {
@@ -175,14 +237,30 @@ def list_documents(
 
 
 @app.get("/documents/{document_name}")
-def get_document_detail(document_name: str):
+def get_document_detail(
+    document_name: str,
+    request: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+    x_user_id: str | None = Header(None),
+):
     """Retrieve metadata and parsed text preview of an indexed paper."""
     from app.services.document_service import (
         count_document_chunks,
         load_document_json,
     )
+    from app.rag.document_eligibility import get_user_authorized_documents
 
     safe_name = Path(document_name).name
+    active_user, _ = resolve_authenticated_workspace(
+        request, authorization, x_session_token, x_user_id=x_user_id
+    )
+    authorized_docs = get_user_authorized_documents(active_user, include_test_docs=True)
+    if safe_name not in authorized_docs:
+        raise HTTPException(
+            status_code=404, detail=f"Document '{safe_name}' not found"
+        )
+
     paper_path = settings.PAPERS_DIR / safe_name
     if not paper_path.exists() or not paper_path.is_file():
         raise HTTPException(
@@ -231,9 +309,26 @@ def get_document_detail(document_name: str):
 
 
 @app.get("/documents/download/{document_name}")
-def download_document(document_name: str):
+def download_document(
+    document_name: str,
+    request: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+    x_user_id: str | None = Header(None),
+):
     """Serve or download the original research paper file."""
+    from app.rag.document_eligibility import get_user_authorized_documents
+
     safe_name = Path(document_name).name
+    active_user, _ = resolve_authenticated_workspace(
+        request, authorization, x_session_token, x_user_id=x_user_id
+    )
+    authorized_docs = get_user_authorized_documents(active_user, include_test_docs=True)
+    if safe_name not in authorized_docs:
+        raise HTTPException(
+            status_code=404, detail=f"File '{safe_name}' not found on server"
+        )
+
     paper_path = settings.PAPERS_DIR / safe_name
     if not paper_path.exists() or not paper_path.is_file():
         raise HTTPException(

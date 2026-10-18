@@ -67,6 +67,9 @@ class BM25Search:
             range(len(scores)), key=lambda i: scores[i], reverse=True
         )
 
+        if document_names is not None and len(document_names) == 0:
+            return []
+
         doc_filter = set(document_names) if document_names else None
 
         results = []

@@ -27,6 +27,15 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = ({
 }) => {
   const [showRawJson, setShowRawJson] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [answerCopied, setAnswerCopied] = useState(false);
+
+  const handleCopyAnswer = () => {
+    const textToCopy = showDetailed ? detailedAnswer : answer;
+    if (!textToCopy) return;
+    void navigator.clipboard.writeText(textToCopy);
+    setAnswerCopied(true);
+    setTimeout(() => setAnswerCopied(false), 2000);
+  };
 
   if (answerState === 'insufficient_evidence') return <AbstentionPanel />;
 
@@ -75,11 +84,20 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = ({
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopyAnswer}
+            className="flex items-center gap-1.5 rounded-md border border-white/10 bg-[#141d26] px-2.5 py-1 text-[11px] font-mono text-[#f3faf0]/75 hover:border-[#a7d0d2]/50 hover:text-white transition-colors cursor-pointer"
+            title="Copy answer text to clipboard"
+          >
+            {answerCopied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3 text-[#a7d0d2]" />}
+            <span>{answerCopied ? 'Copied!' : 'Copy Answer'}</span>
+          </button>
           {rawResponse !== undefined && (
             <button
               type="button"
               onClick={() => setShowRawJson(!showRawJson)}
-              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-[#141d26] px-2.5 py-1 text-[11px] font-mono text-[#f3faf0]/75 hover:border-[#a7d0d2]/50 hover:text-white transition-colors"
+              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-[#141d26] px-2.5 py-1 text-[11px] font-mono text-[#f3faf0]/75 hover:border-[#a7d0d2]/50 hover:text-white transition-colors cursor-pointer"
               title="Toggle raw backend JSON response"
             >
               <Code className="h-3 w-3 text-[#a7d0d2]" />

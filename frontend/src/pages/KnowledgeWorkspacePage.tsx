@@ -56,6 +56,17 @@ import {
   type BackendDocument,
 } from '../lib/api';
 import { DocumentModal } from '../components/DocumentModal';
+import {
+  exportResultToMarkdown,
+  exportResultToPrintableHtml,
+  exportSessionToMarkdown,
+  exportSessionToHtml,
+  exportMindMapToJson,
+  getDownloadHistory,
+  clearDownloadHistory,
+  type DownloadHistoryEntry,
+} from '../lib/exportUtils';
+import { getStoredUser } from '../lib/mockAuth';
 import type { MindMapNode } from '../types/knowledge';
 import type { Evidence, Source } from '../types/evidence';
 import type { AnalysisMode, WorkspaceHistoryItem, WorkspaceResult } from '../types/query';
@@ -133,7 +144,23 @@ function mapBackendEvidence(
   });
 }
 
-const HISTORY_KEY = 'unknown_workspace_history';
+const getHistoryKey = (userId?: string): string => {
+  return userId ? `unknown_workspace_history_${userId}` : 'unknown_workspace_history_guest';
+};
+
+const readHistory = (key: string): WorkspaceHistoryItem[] => {
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      const parsed = JSON.parse(saved) as WorkspaceHistoryItem[];
+      if (Array.isArray(parsed)) return parsed;
+    }
+    return [];
+  } catch {
+    return [];
+  }
+};
+
 type VisualizationView = 'knowledge' | 'mind-map' | 'dna';
 
 const isAnalysisMode = (value: string | null): value is AnalysisMode =>
@@ -147,34 +174,6 @@ const isAnalysisMode = (value: string | null): value is AnalysisMode =>
     'knowledge-map',
     'knowledge-dna',
   ].includes(value);
-
-const readHistory = (): WorkspaceHistoryItem[] => {
-  try {
-    const saved = localStorage.getItem(HISTORY_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved) as WorkspaceHistoryItem[];
-      if (Array.isArray(parsed)) return parsed;
-    }
-
-    const legacySaved = localStorage.getItem('unknown_search_history');
-    if (!legacySaved) return [];
-    const legacy = JSON.parse(legacySaved) as { id?: string; query?: string; timestamp?: string }[];
-    if (!Array.isArray(legacy)) return [];
-    return legacy.flatMap((item) => {
-      if (!item.query) return [];
-      const result = createMockWorkspaceResult(item.query, 'discover');
-      return [{
-        id: item.id || result.request.id,
-        query: item.query,
-        mode: 'discover' as const,
-        result,
-        timestamp: item.timestamp || 'Earlier search',
-      }];
-    });
-  } catch {
-    return [];
-  }
-};
 
 const pipelineByMode: Record<AnalysisMode, string[]> = {
   discover: ['Analyzing research intent...', 'Retrieving documents (BM25 + FAISS)...', 'Extracting cited evidence...', 'Synthesizing grounded answer...'],
@@ -199,6 +198,10 @@ const modeTitles: Record<AnalysisMode, string> = {
 };
 
 export const KnowledgeWorkspacePage: React.FC = () => {
+  const currentUser = getStoredUser();
+  const currentUserId = currentUser?.id || 'default_user';
+  const historyKey = getHistoryKey(currentUser?.id);
+
   const [searchParams, setSearchParams] = useSearchParams();
   const autoRunId = searchParams.get('run');
   const autoRunQuery = searchParams.get('q');
@@ -207,7 +210,9 @@ export const KnowledgeWorkspacePage: React.FC = () => {
   const [mode, setMode] = useState<AnalysisMode>(initialMode);
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [activeResult, setActiveResult] = useState<WorkspaceResult | null>(null);
-  const [history, setHistory] = useState<WorkspaceHistoryItem[]>(readHistory);
+  const [history, setHistory] = useState<WorkspaceHistoryItem[]>(() => readHistory(historyKey));
+  const [isDownloadsOpen, setIsDownloadsOpen] = useState(false);
+  const [downloadHistory, setDownloadHistory] = useState<DownloadHistoryEntry[]>(() => getDownloadHistory(currentUserId));
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [pipelineStage, setPipelineStage] = useState('');
@@ -787,9 +792,13 @@ export const KnowledgeWorkspacePage: React.FC = () => {
   };
 
   const handleClearHistory = () => {
+    if (!window.confirm('Are you sure you want to clear your entire research query history?')) {
+      return;
+    }
     setHistory([]);
     setActiveHistoryId(null);
-    localStorage.removeItem(HISTORY_KEY);
+    localStorage.removeItem(historyKey);
+    setActiveResult(null);
   };
 
   const showAbstention = () => {
@@ -801,11 +810,11 @@ export const KnowledgeWorkspacePage: React.FC = () => {
 
   React.useEffect(() => {
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+      localStorage.setItem(historyKey, JSON.stringify(history));
     } catch (error) {
       console.error('Failed to save workspace history', error);
     }
-  }, [history]);
+  }, [history, historyKey]);
 
   const isAnswered = activeResult?.answerState === 'answer';
 
@@ -818,6 +827,16 @@ export const KnowledgeWorkspacePage: React.FC = () => {
         onNewSearch={handleNewSearch}
         onClearHistory={handleClearHistory}
         onOpenDocuments={() => setIsDocumentModalOpen(true)}
+        onExportSessionMarkdown={() => {
+          exportSessionToMarkdown(history, currentUser?.name || 'Researcher');
+          setDownloadHistory(getDownloadHistory(currentUserId));
+        }}
+        onExportSessionHtml={() => {
+          exportSessionToHtml(history, currentUser?.name || 'Researcher');
+          setDownloadHistory(getDownloadHistory(currentUserId));
+        }}
+        onOpenDownloads={() => setIsDownloadsOpen(true)}
+        downloadCount={downloadHistory.length}
       />
 
       <main className="min-w-0 flex-1 overflow-y-auto">
@@ -857,15 +876,25 @@ export const KnowledgeWorkspacePage: React.FC = () => {
                 )}
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-                Academic Research Assistant & Knowledge DNA
+                Academic Research Assistant
               </h1>
               <p className="max-w-3xl text-sm leading-relaxed text-[#c1cbd2]">
-                Adaptive hybrid semantic retrieval (BM25 + FAISS) grounded in peer-reviewed literature with multi-hop verification.
+                Adaptive Hybrid Semantic Research &amp; Evidence Engine
               </p>
             </div>
 
-            {/* Document upload quick trigger */}
+            {/* Document and download toolbar */}
             <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsDownloadsOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[#4d728e]/40 bg-[#141d26] px-3.5 py-2 text-xs font-semibold text-white hover:border-[#a7d0d2] hover:bg-[#1b2734] transition-all shadow-sm cursor-pointer"
+                title="View download and export history"
+              >
+                <Download className="h-4 w-4 text-[#a7d0d2]" />
+                <span>Downloads ({downloadHistory.length})</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setIsDocumentModalOpen(true)}
@@ -1158,6 +1187,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
               mode={mode}
               isLoading={isLoading}
               loadingLabel={pipelineStage || 'Processing...'}
+              selectedDocuments={Array.from(selectedDocNames)}
               onQueryChange={setQuery}
               onSubmit={() => void runDemo(query)}
               onShowAbstention={showAbstention}
@@ -1297,15 +1327,15 @@ export const KnowledgeWorkspacePage: React.FC = () => {
           {/* Active Result View */}
           {activeResult && (
             <div className="space-y-6">
-              {/* Status Header */}
-              <div className={`rounded-xl border px-4 py-3 text-xs leading-relaxed flex items-center justify-between ${
+              {/* Status Header & Result Export Toolbar */}
+              <div className={`rounded-xl border px-4 py-3 text-xs leading-relaxed flex flex-wrap items-center justify-between gap-3 ${
                 activeResult.origin === 'backend'
                   ? 'border-emerald-500/25 bg-[#141d26]/80 text-[#f3faf0]/85'
                   : activeResult.origin === 'static-demo'
                   ? 'border-amber-400/25 bg-amber-400/[0.05] text-amber-200/90'
                   : 'border-orange-400/25 bg-orange-400/[0.05] text-orange-200/90'
               }`}>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {activeResult.origin === 'backend' ? (
                     <span className="font-mono font-semibold uppercase text-emerald-400">● Live Backend Response</span>
                   ) : activeResult.origin === 'static-demo' ? (
@@ -1315,9 +1345,54 @@ export const KnowledgeWorkspacePage: React.FC = () => {
                   )}
                   <span>·</span>
                   <span className="text-[#a7d0d2] font-mono">{modeTitles[activeResult.request.mode]}</span>
+                  <span>·</span>
+                  <span className="text-[11px] font-mono text-[#f3faf0]/50">
+                    {activeResult.sources.length} Sources {activeResult.origin === 'backend' ? 'Retrieved' : 'Referenced'}
+                  </span>
                 </div>
-                <div className="text-[11px] font-mono text-[#f3faf0]/50">
-                  {activeResult.sources.length} Sources {activeResult.origin === 'backend' ? 'Retrieved' : 'Referenced'}
+
+                {/* Export Buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportResultToMarkdown(activeResult, currentUser?.name || 'Researcher');
+                      setDownloadHistory(getDownloadHistory(currentUserId));
+                    }}
+                    className="flex items-center gap-1 rounded bg-[#10171d] hover:bg-[#1b2734] border border-white/10 px-2.5 py-1 text-[11px] font-mono text-[#a7d0d2] hover:text-white transition-colors cursor-pointer"
+                    title="Export result as Markdown report"
+                  >
+                    <Download className="h-3 w-3" />
+                    <span>Markdown</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportResultToPrintableHtml(activeResult, currentUser?.name || 'Researcher');
+                      setDownloadHistory(getDownloadHistory(currentUserId));
+                    }}
+                    className="flex items-center gap-1 rounded bg-[#10171d] hover:bg-[#1b2734] border border-white/10 px-2.5 py-1 text-[11px] font-mono text-[#a7d0d2] hover:text-white transition-colors cursor-pointer"
+                    title="Export result as styled Printable HTML (Print to PDF)"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    <span>Printable HTML / PDF</span>
+                  </button>
+
+                  {(activeResult.request.mode === 'knowledge-map' || activeResult.request.mode === 'knowledge-dna') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        exportMindMapToJson(activeResult, currentUser?.name || 'Researcher');
+                        setDownloadHistory(getDownloadHistory(currentUserId));
+                      }}
+                      className="flex items-center gap-1 rounded bg-[#10171d] hover:bg-[#1b2734] border border-white/10 px-2.5 py-1 text-[11px] font-mono text-[#a7d0d2] hover:text-white transition-colors cursor-pointer"
+                      title="Export graph topology as JSON"
+                    >
+                      <Layers className="h-3 w-3" />
+                      <span>Graph JSON</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1480,6 +1555,89 @@ export const KnowledgeWorkspacePage: React.FC = () => {
           void runDemo(suggestedQuery, 'discover');
         }}
       />
+
+      {/* User-Isolated Download History Modal */}
+      {isDownloadsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-[#10171d] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Download className="h-4 w-4 text-[#d2434e]" />
+                  <span>Research Download History</span>
+                </h3>
+                <p className="text-xs text-[#a7d0d2] font-mono mt-0.5">
+                  User Workspace: {currentUser?.name || 'Local Researcher'} ({currentUser?.id || 'guest'})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDownloadsOpen(false)}
+                className="rounded-lg p-1 text-[#f3faf0]/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+
+            {downloadHistory.length === 0 ? (
+              <div className="py-12 text-center text-xs text-[#f3faf0]/50">
+                <Download className="h-8 w-8 mx-auto mb-2 text-[#f3faf0]/20" />
+                <p>No reports exported in this workspace yet.</p>
+                <p className="text-[11px] mt-1 text-[#f3faf0]/40">Export individual results or complete sessions to see them logged here.</p>
+              </div>
+            ) : (
+              <div className="max-h-80 overflow-y-auto space-y-2">
+                {downloadHistory.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-3 rounded-lg border border-white/5 bg-[#141d26]/70 text-xs">
+                    <div className="min-w-0 flex-1 pr-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] uppercase px-1.5 py-0.5 rounded bg-[#1b2734] text-[#a7d0d2] border border-white/10">
+                          {item.format}
+                        </span>
+                        <span className="font-mono text-[10px] text-[#f3faf0]/40">
+                          {new Date(item.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="font-medium text-white truncate mt-1 text-xs">
+                        {item.query}
+                      </p>
+                      <p className="text-[10px] font-mono text-[#f3faf0]/40 mt-0.5">
+                        {item.filename} ({(item.sizeBytes / 1024).toFixed(1)} KB)
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border-t border-white/10 pt-3">
+              {downloadHistory.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Clear all recorded downloads for your account?')) {
+                      clearDownloadHistory(currentUserId);
+                      setDownloadHistory([]);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Clear Download History</span>
+                </button>
+              ) : <div />}
+
+              <button
+                type="button"
+                onClick={() => setIsDownloadsOpen(false)}
+                className="rounded-lg bg-[#141d26] hover:bg-[#1b2734] border border-white/10 px-4 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

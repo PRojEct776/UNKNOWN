@@ -14,44 +14,100 @@
  * Do NOT add endpoints here that do not exist in the backend.
  */
 
+import { getStoredUser } from './mockAuth';
+
+// ---------------------------------------------------------------------------
+// Error Classification Classes
+// ---------------------------------------------------------------------------
+
+export class BackendTimeoutError extends Error {
+  readonly timeoutMs: number;
+  readonly url: string;
+  constructor(timeoutMs: number, url: string) {
+    super(
+      `Backend request timed out after ${(timeoutMs / 1000).toFixed(0)}s while querying ${url}. ` +
+      `The deep multi-hop reasoning pipeline or embedding model may be loading context.`
+    );
+    this.name = 'BackendTimeoutError';
+    this.timeoutMs = timeoutMs;
+    this.url = url;
+  }
+}
+
+export class BackendConnectionError extends Error {
+  readonly url: string;
+  constructor(url: string, cause?: unknown) {
+    super(`Cannot reach UNKNOWN backend at ${url}. Please confirm the server is running on port 8000.`, { cause });
+    this.name = 'BackendConnectionError';
+    this.url = url;
+  }
+}
+
+export class BackendHttpError extends Error {
+  readonly status: number;
+  readonly detail: string;
+  constructor(status: number, detail: string) {
+    super(`Backend returned error ${status}: ${detail}`);
+    this.name = 'BackendHttpError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-const BACKEND_URL: string = (
+export const BACKEND_URL: string = (
   import.meta.env.VITE_BACKEND_URL as string | undefined ?? 'http://localhost:8000'
 ).replace(/\/$/, '');
 
-const TIMEOUT_MS: number = (() => {
+/** Default timeout for actual research queries (approx 30s for embedding & multi-hop RAG). */
+export const DEFAULT_QUERY_TIMEOUT_MS: number = (() => {
   const raw = import.meta.env.VITE_BACKEND_TIMEOUT_MS as string | undefined;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed >= 500 ? parsed : 30000;
+})();
+
+/** Fast timeout for health checks, pings, and lightweight metadata calls (5s). */
+export const FAST_TIMEOUT_MS: number = (() => {
+  const raw = import.meta.env.VITE_FAST_TIMEOUT_MS as string | undefined;
   const parsed = raw ? parseInt(raw, 10) : NaN;
   return Number.isFinite(parsed) && parsed >= 500 ? parsed : 5000;
 })();
 
 // ---------------------------------------------------------------------------
-// Shared fetch helper
+// Shared fetch helper with AbortController & Timeout
 // ---------------------------------------------------------------------------
 
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs: number,
+  externalSignal?: AbortSignal,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timer);
+      throw new DOMException('Aborted by user', 'AbortError');
+    }
+    externalSignal.addEventListener('abort', () => controller.abort());
+  }
 
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     return response;
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(
-        `Backend request timed out after ${timeoutMs} ms. Is the server running at ${BACKEND_URL}?`,
-      );
+      if (externalSignal?.aborted) {
+        throw err;
+      }
+      throw new BackendTimeoutError(timeoutMs, url);
     }
-    throw new Error(
-      `Network error reaching ${BACKEND_URL}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new BackendConnectionError(url, err);
   } finally {
     clearTimeout(timer);
   }
@@ -60,14 +116,31 @@ async function fetchWithTimeout(
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
+  timeoutMs: number = DEFAULT_QUERY_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<T> {
+  const storedUser = getStoredUser();
+  const userHeaders: Record<string, string> = {};
+  if (storedUser?.id) {
+    userHeaders['X-User-Id'] = storedUser.id;
+  }
+  if (storedUser?.apiToken && storedUser.apiToken.startsWith('bearer_')) {
+    userHeaders['Authorization'] = `Bearer ${storedUser.apiToken}`;
+  }
+
   const response = await fetchWithTimeout(
     `${BACKEND_URL}${path}`,
     {
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...userHeaders,
+        ...(options.headers as Record<string, string> | undefined),
+      },
     },
-    TIMEOUT_MS,
+    timeoutMs,
+    signal,
   );
 
   if (!response.ok) {
@@ -78,7 +151,7 @@ async function apiFetch<T>(
     } catch {
       detail = response.statusText || `HTTP ${response.status}`;
     }
-    throw new Error(`${response.status}: ${detail}`);
+    throw new BackendHttpError(response.status, detail);
   }
 
   return response.json() as Promise<T>;
@@ -313,18 +386,37 @@ export async function fetchDocumentDetail(documentName: string): Promise<Backend
 }
 
 /**
+ * GET /health
+ * Fast health check for backend availability.
+ */
+export async function checkBackendHealth(): Promise<{ status: string; service?: string; version?: string }> {
+  return apiFetch<{ status: string; service?: string; version?: string }>('/health', { method: 'GET' }, FAST_TIMEOUT_MS);
+}
+
+/**
  * POST /documents/upload
  * Upload a single research document (PDF, DOCX, or TXT).
  */
 export async function uploadDocument(file: File): Promise<BackendUploadResponse> {
+  const storedUser = getStoredUser();
   const formData = new FormData();
   formData.append('file', file);
+  if (storedUser?.id) {
+    formData.append('user_id', storedUser.id);
+  }
+
+  const userHeaders: Record<string, string> = {};
+  if (storedUser?.id) {
+    userHeaders['X-User-Id'] = storedUser.id;
+  }
+  if (storedUser?.apiToken && storedUser.apiToken.startsWith('bearer_')) {
+    userHeaders['Authorization'] = `Bearer ${storedUser.apiToken}`;
+  }
 
   const response = await fetchWithTimeout(
     `${BACKEND_URL}/documents/upload`,
-    { method: 'POST', body: formData },
-    // Use a longer timeout for uploads (up to 5× base timeout)
-    Math.max(TIMEOUT_MS * 5, 30_000),
+    { method: 'POST', body: formData, headers: userHeaders },
+    Math.max(DEFAULT_QUERY_TIMEOUT_MS * 2, 60_000),
   );
 
   if (!response.ok) {
@@ -335,7 +427,7 @@ export async function uploadDocument(file: File): Promise<BackendUploadResponse>
     } catch {
       detail = response.statusText || `HTTP ${response.status}`;
     }
-    throw new Error(`Upload failed (${response.status}): ${detail}`);
+    throw new BackendHttpError(response.status, `Upload failed: ${detail}`);
   }
 
   return response.json() as Promise<BackendUploadResponse>;
@@ -348,15 +440,27 @@ export async function uploadDocument(file: File): Promise<BackendUploadResponse>
 export async function uploadDocumentsBatch(
   files: File[],
 ): Promise<BackendBatchUploadResponse> {
+  const storedUser = getStoredUser();
   const formData = new FormData();
   for (const file of files) {
     formData.append('files', file);
   }
+  if (storedUser?.id) {
+    formData.append('user_id', storedUser.id);
+  }
+
+  const userHeaders: Record<string, string> = {};
+  if (storedUser?.id) {
+    userHeaders['X-User-Id'] = storedUser.id;
+  }
+  if (storedUser?.apiToken && storedUser.apiToken.startsWith('bearer_')) {
+    userHeaders['Authorization'] = `Bearer ${storedUser.apiToken}`;
+  }
 
   const response = await fetchWithTimeout(
     `${BACKEND_URL}/documents/upload-batch`,
-    { method: 'POST', body: formData },
-    Math.max(TIMEOUT_MS * 5, 60_000),
+    { method: 'POST', body: formData, headers: userHeaders },
+    Math.max(DEFAULT_QUERY_TIMEOUT_MS * 2, 60_000),
   );
 
   if (!response.ok) {
@@ -367,7 +471,7 @@ export async function uploadDocumentsBatch(
     } catch {
       detail = response.statusText || `HTTP ${response.status}`;
     }
-    throw new Error(`Batch upload failed (${response.status}): ${detail}`);
+    throw new BackendHttpError(response.status, `Batch upload failed: ${detail}`);
   }
 
   return response.json() as Promise<BackendBatchUploadResponse>;
@@ -403,11 +507,17 @@ export function getDocumentDownloadUrl(documentName: string): string {
 export async function queryBackend(
   query: string,
   documentNames?: string[],
+  signal?: AbortSignal,
 ): Promise<BackendQueryResponse> {
-  return apiFetch<BackendQueryResponse>('/query', {
-    method: 'POST',
-    body: JSON.stringify({ query, document_names: documentNames ?? null }),
-  });
+  return apiFetch<BackendQueryResponse>(
+    '/query',
+    {
+      method: 'POST',
+      body: JSON.stringify({ query, document_names: documentNames ?? null }),
+    },
+    DEFAULT_QUERY_TIMEOUT_MS,
+    signal,
+  );
 }
 
 /**
@@ -417,11 +527,17 @@ export async function queryBackend(
 export async function reasonBackend(
   query: string,
   documentNames?: string[],
+  signal?: AbortSignal,
 ): Promise<BackendReasoningResponse> {
-  return apiFetch<BackendReasoningResponse>('/reason', {
-    method: 'POST',
-    body: JSON.stringify({ query, document_names: documentNames ?? null }),
-  });
+  return apiFetch<BackendReasoningResponse>(
+    '/reason',
+    {
+      method: 'POST',
+      body: JSON.stringify({ query, document_names: documentNames ?? null }),
+    },
+    DEFAULT_QUERY_TIMEOUT_MS,
+    signal,
+  );
 }
 
 /**
@@ -431,11 +547,17 @@ export async function reasonBackend(
 export async function verifyClaimBackend(
   claim: string,
   documentNames?: string[],
+  signal?: AbortSignal,
 ): Promise<BackendVerifyResponse> {
-  return apiFetch<BackendVerifyResponse>('/verify', {
-    method: 'POST',
-    body: JSON.stringify({ claim, document_names: documentNames ?? null }),
-  });
+  return apiFetch<BackendVerifyResponse>(
+    '/verify',
+    {
+      method: 'POST',
+      body: JSON.stringify({ claim, document_names: documentNames ?? null }),
+    },
+    DEFAULT_QUERY_TIMEOUT_MS,
+    signal,
+  );
 }
 
 /**
@@ -445,11 +567,17 @@ export async function verifyClaimBackend(
 export async function compareBackend(
   query: string,
   documentNames?: string[],
+  signal?: AbortSignal,
 ): Promise<BackendCompareResponse> {
-  return apiFetch<BackendCompareResponse>('/compare', {
-    method: 'POST',
-    body: JSON.stringify({ query, document_names: documentNames ?? null }),
-  });
+  return apiFetch<BackendCompareResponse>(
+    '/compare',
+    {
+      method: 'POST',
+      body: JSON.stringify({ query, document_names: documentNames ?? null }),
+    },
+    DEFAULT_QUERY_TIMEOUT_MS,
+    signal,
+  );
 }
 
 /**
@@ -459,39 +587,47 @@ export async function compareBackend(
 export async function findResearchGapsBackend(
   query: string,
   documentNames?: string[],
+  signal?: AbortSignal,
 ): Promise<BackendResearchGapResponse> {
-  return apiFetch<BackendResearchGapResponse>('/gaps', {
-    method: 'POST',
-    body: JSON.stringify({ query, document_names: documentNames ?? null }),
-  });
+  return apiFetch<BackendResearchGapResponse>(
+    '/gaps',
+    {
+      method: 'POST',
+      body: JSON.stringify({ query, document_names: documentNames ?? null }),
+    },
+    DEFAULT_QUERY_TIMEOUT_MS,
+    signal,
+  );
 }
 
 /**
  * POST /debate
  * Run an evidence-grounded AI debate.
- *
- * If `positionA` or `positionB` are not provided the function generates
- * sensible default position strings from the query to satisfy the backend's
- * required fields.
  */
 export async function runDebateBackend(
   query: string,
   positionA?: string,
   positionB?: string,
   documentNames?: string[],
+  signal?: AbortSignal,
 ): Promise<BackendDebateResponse> {
   const pA = positionA?.trim() || `${query} — in favour`;
   const pB = positionB?.trim() || `${query} — against`;
 
-  return apiFetch<BackendDebateResponse>('/debate', {
-    method: 'POST',
-    body: JSON.stringify({
-      query,
-      position_a: pA,
-      position_b: pB,
-      document_names: documentNames ?? null,
-    }),
-  });
+  return apiFetch<BackendDebateResponse>(
+    '/debate',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        query,
+        position_a: pA,
+        position_b: pB,
+        document_names: documentNames ?? null,
+      }),
+    },
+    DEFAULT_QUERY_TIMEOUT_MS,
+    signal,
+  );
 }
 
 /**
@@ -501,11 +637,17 @@ export async function runDebateBackend(
 export async function queryKnowledgeDNA(
   query: string,
   documentNames?: string[],
+  signal?: AbortSignal,
 ): Promise<BackendKnowledgeDNAResponse> {
-  return apiFetch<BackendKnowledgeDNAResponse>('/knowledge-dna', {
-    method: 'POST',
-    body: JSON.stringify({ query, document_names: documentNames ?? null }),
-  });
+  return apiFetch<BackendKnowledgeDNAResponse>(
+    '/knowledge-dna',
+    {
+      method: 'POST',
+      body: JSON.stringify({ query, document_names: documentNames ?? null }),
+    },
+    DEFAULT_QUERY_TIMEOUT_MS,
+    signal,
+  );
 }
 
 /**
@@ -515,9 +657,15 @@ export async function queryKnowledgeDNA(
 export async function queryKnowledgeMindMap(
   query: string,
   documentNames?: string[],
+  signal?: AbortSignal,
 ): Promise<BackendKnowledgeMindMapResponse> {
-  return apiFetch<BackendKnowledgeMindMapResponse>('/knowledge-mind-map', {
-    method: 'POST',
-    body: JSON.stringify({ query, document_names: documentNames ?? null }),
-  });
+  return apiFetch<BackendKnowledgeMindMapResponse>(
+    '/knowledge-mind-map',
+    {
+      method: 'POST',
+      body: JSON.stringify({ query, document_names: documentNames ?? null }),
+    },
+    DEFAULT_QUERY_TIMEOUT_MS,
+    signal,
+  );
 }

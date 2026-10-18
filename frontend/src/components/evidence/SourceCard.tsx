@@ -1,5 +1,5 @@
-import React from 'react';
-import { Award, Layers } from 'lucide-react';
+import React, { useState } from 'react';
+import { Award, Check, Copy, Layers } from 'lucide-react';
 import type { Evidence, Source } from '../../types/evidence';
 
 interface SourceCardProps {
@@ -8,7 +8,17 @@ interface SourceCardProps {
   index?: number;
 }
 
-export const SourceCard: React.FC<SourceCardProps> = ({ source, evidence, index }) => (
+export const SourceCard: React.FC<SourceCardProps> = ({ source, evidence, index }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyCitation = () => {
+    const textToCopy = `${source.documentName}, Page ${source.page ?? 1} (Chunk: ${source.chunkId || 'N/A'})${evidence.length ? ' — "' + evidence[0].text + '"' : ''}`;
+    void navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
   <article className="rounded-xl border border-[#4d728e]/30 bg-[#0b1219]/90 p-4 transition-all hover:border-[#a7d0d2]/50 shadow-sm">
     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
       <div className="flex items-start gap-3 min-w-0">
@@ -30,6 +40,15 @@ export const SourceCard: React.FC<SourceCardProps> = ({ source, evidence, index 
                 Chunk: {source.chunkId}
               </span>
             )}
+            <button
+              type="button"
+              onClick={handleCopyCitation}
+              className="inline-flex items-center gap-1 rounded bg-[#141d26] border border-white/10 px-2 py-0.5 text-[10px] font-mono text-[#a7d0d2] hover:text-white transition-colors cursor-pointer"
+              title="Copy citation string"
+            >
+              {copied ? <Check className="h-2.5 w-2.5 text-emerald-400" /> : <Copy className="h-2.5 w-2.5" />}
+              <span>{copied ? 'Copied!' : 'Copy Citation'}</span>
+            </button>
           </div>
           <p className="mt-1 text-xs text-[#f3faf0]/55 flex items-center gap-1.5">
             <Layers className="h-3 w-3 text-[#a7d0d2]" />
@@ -72,4 +91,5 @@ export const SourceCard: React.FC<SourceCardProps> = ({ source, evidence, index 
       </div>
     )}
   </article>
-);
+  );
+};

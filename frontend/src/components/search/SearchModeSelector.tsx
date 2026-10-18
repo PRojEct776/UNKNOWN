@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, GitCompareArrows, Lightbulb, MessageCircleQuestion, Network, ShieldCheck, Waypoints, type LucideIcon } from 'lucide-react';
+import { BookOpen, Dna, GitCompareArrows, Lightbulb, MessageCircleQuestion, Network, ShieldCheck, Waypoints, type LucideIcon } from 'lucide-react';
 import type { AnalysisMode } from '../../types/query';
 
 const modes: { id: AnalysisMode; label: string; description: string; icon: LucideIcon }[] = [
@@ -10,6 +10,7 @@ const modes: { id: AnalysisMode; label: string; description: string; icon: Lucid
   { id: 'compare', label: 'Compare', description: 'Compare concepts across structured aspects', icon: GitCompareArrows },
   { id: 'gaps', label: 'Find Gaps', description: 'Detect limitations & unaddressed research', icon: Lightbulb },
   { id: 'debate', label: 'Debate', description: 'Evidence-grounded thesis & antithesis', icon: MessageCircleQuestion },
+  { id: 'knowledge-dna', label: 'Concept DNA', description: 'Thematic emergence & DNA signals', icon: Dna },
 ];
 
 interface SearchModeSelectorProps {

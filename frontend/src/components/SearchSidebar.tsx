@@ -10,6 +10,10 @@ interface SearchSidebarProps {
   onNewSearch: () => void;
   onClearHistory: () => void;
   onOpenDocuments?: () => void;
+  onExportSessionMarkdown?: () => void;
+  onExportSessionHtml?: () => void;
+  onOpenDownloads?: () => void;
+  downloadCount?: number;
 }
 
 export const SearchSidebar: React.FC<SearchSidebarProps> = ({
@@ -19,6 +23,10 @@ export const SearchSidebar: React.FC<SearchSidebarProps> = ({
   onNewSearch,
   onClearHistory,
   onOpenDocuments,
+  onExportSessionMarkdown,
+  onExportSessionHtml,
+  onOpenDownloads,
+  downloadCount = 0,
 }) => {
   return (
     <aside className="w-full shrink-0 h-52 border-b border-white/8 bg-[#10171d] flex flex-col justify-between lg:w-64 lg:h-[calc(100vh-4rem)] lg:border-b-0 lg:border-r xl:w-72">
@@ -132,14 +140,48 @@ export const SearchSidebar: React.FC<SearchSidebarProps> = ({
           </button>
         </div>
 
-        {history.length > 0 && (
+        {onOpenDownloads && (
           <button
-            onClick={onClearHistory}
-            className="w-full py-1.5 px-3 rounded-lg text-[11px] text-[#f3faf0]/60 hover:text-rose-400 hover:bg-rose-500/15 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            type="button"
+            onClick={onOpenDownloads}
+            className="w-full py-1.5 px-3 rounded-lg bg-[#141d26] hover:bg-[#1b2734] border border-white/10 text-[11px] font-mono text-[#a7d0d2] hover:text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
-            <Trash2 className="w-3 h-3" />
-            <span>Clear History</span>
+            <span>Downloads ({downloadCount})</span>
           </button>
+        )}
+
+        {history.length > 0 && (
+          <div className="pt-1 border-t border-white/5 space-y-1">
+            <div className="grid grid-cols-2 gap-1">
+              {onExportSessionMarkdown && (
+                <button
+                  type="button"
+                  onClick={onExportSessionMarkdown}
+                  className="py-1 px-1.5 rounded bg-[#141d26] hover:bg-[#1b2734] border border-white/10 text-[10px] font-mono text-[#f3faf0]/75 hover:text-white transition-colors cursor-pointer text-center"
+                  title="Export entire session to Markdown"
+                >
+                  Export .MD
+                </button>
+              )}
+              {onExportSessionHtml && (
+                <button
+                  type="button"
+                  onClick={onExportSessionHtml}
+                  className="py-1 px-1.5 rounded bg-[#141d26] hover:bg-[#1b2734] border border-white/10 text-[10px] font-mono text-[#f3faf0]/75 hover:text-white transition-colors cursor-pointer text-center"
+                  title="Export entire session to Printable HTML"
+                >
+                  Export .HTML
+                </button>
+              )}
+            </div>
+            <button
+              onClick={onClearHistory}
+              className="w-full py-1 px-3 rounded-lg text-[10px] font-mono text-[#f3faf0]/50 hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>Clear History</span>
+            </button>
+          </div>
         )}
       </div>
     </aside>

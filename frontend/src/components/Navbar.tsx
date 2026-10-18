@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  Search,
   LayoutDashboard,
   LogOut,
   HelpCircle,
@@ -76,25 +75,13 @@ export const Navbar: React.FC = () => {
             <Link
               to="/search"
               className={`flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-medium transition-all ${
-                location.pathname === '/search' && !location.search.includes('mode=knowledge-dna')
+                location.pathname === '/search'
                   ? 'bg-[#1b2734] text-white shadow-sm border border-[#4d728e]/40'
                   : 'text-[#f3faf0]/75 hover:text-white hover:bg-white/5'
               }`}
             >
               <LayoutDashboard className="w-3.5 h-3.5 text-[#d2434e]" />
               <span>Workspace</span>
-            </Link>
-
-            <Link
-              to="/search?mode=knowledge-dna"
-              className={`flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-medium transition-all ${
-                location.search.includes('mode=knowledge-dna')
-                  ? 'bg-[#1b2734] text-white shadow-sm border border-[#4d728e]/40'
-                  : 'text-[#f3faf0]/75 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Search className="w-3.5 h-3.5 text-[#a7d0d2]" />
-              <span>Knowledge DNA</span>
             </Link>
 
             <button

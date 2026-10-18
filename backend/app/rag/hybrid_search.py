@@ -88,6 +88,10 @@ class HybridSearch:
         if top_k is None:
             top_k = settings.TOP_K_RESULTS
 
+        if document_names is not None and len(document_names) == 0:
+            logger.info("Hybrid search requested with empty document scope. Returning 0 results.")
+            return []
+
         doc_filter = set(document_names) if document_names else None
 
         # Expand budget for multi-document comparisons/queries to guarantee coverage across all selected papers

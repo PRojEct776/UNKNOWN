@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Dna, Wrench, Lightbulb, AlertCircle, GitFork, BookOpen, Layers, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Dna, Wrench, Lightbulb, AlertCircle, GitFork, BookOpen, Layers, CheckCircle2, ChevronRight, Download } from 'lucide-react';
 import type { KnowledgeDNA as KnowledgeDNAData } from '../../types/knowledge';
+import { generateKnowledgeDnaSvg, downloadSvgFile, downloadSvgAsPngFile } from '../../lib/exportUtils';
 
 interface KnowledgeDNAProps {
   data: KnowledgeDNAData;
@@ -8,6 +9,30 @@ interface KnowledgeDNAProps {
 
 export const KnowledgeDNA: React.FC<KnowledgeDNAProps> = ({ data }) => {
   const [activeTab, setActiveTab] = useState<'concepts' | 'methods' | 'limitations' | 'relationships'>('concepts');
+  const [isExporting, setIsExporting] = useState<'svg' | 'png' | null>(null);
+
+  const handleDownloadSvg = () => {
+    try {
+      const svg = generateKnowledgeDnaSvg(data, 800, 440);
+      const safeTitle = (data.researchArea || 'knowledge_dna').replace(/[^a-zA-Z0-9_-]/g, '_');
+      downloadSvgFile(`unknown_dna_${safeTitle}_${Date.now()}.svg`, svg, 'researcher', data.researchArea || 'Knowledge DNA');
+    } catch (err) {
+      console.error('Failed to export DNA SVG:', err);
+    }
+  };
+
+  const handleDownloadPng = async () => {
+    try {
+      setIsExporting('png');
+      const svg = generateKnowledgeDnaSvg(data, 800, 440);
+      const safeTitle = (data.researchArea || 'knowledge_dna').replace(/[^a-zA-Z0-9_-]/g, '_');
+      await downloadSvgAsPngFile(`unknown_dna_${safeTitle}_${Date.now()}.png`, svg, 800, 440, 'researcher', data.researchArea || 'Knowledge DNA');
+    } catch (err) {
+      console.error('Failed to export DNA PNG:', err);
+    } finally {
+      setIsExporting(null);
+    }
+  };
 
   const coreTopics = data.coreTopics || [];
   const keyConcepts = data.keyConcepts || [];
@@ -109,8 +134,31 @@ export const KnowledgeDNA: React.FC<KnowledgeDNAProps> = ({ data }) => {
       {/* Interactive Visual Topology Canvas */}
       {allSignals.length > 0 && (
         <div className="rounded-xl border border-[#4d728e]/30 bg-[#070b0f] p-4">
-          <div className="mb-2 flex items-center justify-between text-xs text-[#a7d0d2]">
-            <span className="font-mono text-[11px] uppercase">Knowledge DNA Topology Graph</span>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[#a7d0d2]">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-[11px] uppercase">Knowledge DNA Topology Graph</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleDownloadSvg}
+                  className="inline-flex items-center gap-1 rounded bg-[#141d26] border border-[#4d728e]/40 px-2 py-0.5 text-[10px] font-mono text-[#a7d0d2] hover:text-white hover:border-[#a7d0d2] transition-colors cursor-pointer"
+                  title="Download standalone vector SVG"
+                >
+                  <Download className="h-2.5 w-2.5" />
+                  <span>SVG</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadPng()}
+                  disabled={isExporting === 'png'}
+                  className="inline-flex items-center gap-1 rounded bg-[#141d26] border border-[#4d728e]/40 px-2 py-0.5 text-[10px] font-mono text-[#a7d0d2] hover:text-white hover:border-[#a7d0d2] transition-colors cursor-pointer disabled:opacity-50"
+                  title="Download high-resolution raster PNG"
+                >
+                  <Download className="h-2.5 w-2.5" />
+                  <span>{isExporting === 'png' ? 'PNG...' : 'PNG'}</span>
+                </button>
+              </div>
+            </div>
             <div className="flex items-center gap-3 text-[10px] font-mono">
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#3b82f6]" /> Topic</span>
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#10b981]" /> Concept</span>
