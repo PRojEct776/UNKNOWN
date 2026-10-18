@@ -1,6 +1,8 @@
 {
     "document": "A_Deployment_Oriented_Real_Time_Multimodal_Emotion_Recognition_System_using_Vision_Transformer_and_RoBERTa_Based_Models.docx",
     "title": "A_Deployment_Oriented_Real_Time_Multimodal_Emotion_Recognition_System_using_Vision_Transformer_and_RoBERTa_Based_Models",
+    "user_id": "default_user",
+    "is_test_document": false,
     "document_type": "docx",
     "document_hash": "35ccb9d5ab73ca542b61033a186c340966796b2a90e99232a352f8df170cd5f9",
     "pages": 1,
@@ -8,6 +10,9 @@
     "text_length": 2750,
     "estimated_read_time": 13.75,
     "embedding_status": true,
+    "embedding_status_detail": "verified",
+    "embedding_expected_chunks": 7,
+    "embedding_verified_chunks": 7,
     "ocr_required": false,
     "ocr_quality": 1.0,
     "metadata_completeness": 1.0,

@@ -1,6 +1,8 @@
 {
     "document": "UNKNOWN_Test_Research_Packet.docx",
     "title": "UNKNOWN_Test_Research_Packet",
+    "user_id": "default_user",
+    "is_test_document": false,
     "document_type": "docx",
     "document_hash": "762d259cb8dadf09489988722d8a12581a8f2259480a817192438a49c9ed00e4",
     "pages": 1,
@@ -8,6 +10,9 @@
     "text_length": 1136,
     "estimated_read_time": 5.68,
     "embedding_status": true,
+    "embedding_status_detail": "verified",
+    "embedding_expected_chunks": 3,
+    "embedding_verified_chunks": 3,
     "ocr_required": false,
     "ocr_quality": 1.0,
     "metadata_completeness": 1.0,

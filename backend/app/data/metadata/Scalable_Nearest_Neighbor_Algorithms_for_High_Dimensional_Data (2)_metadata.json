@@ -1,6 +1,8 @@
 {
     "document": "Scalable_Nearest_Neighbor_Algorithms_for_High_Dimensional_Data (2).pdf",
     "title": "Scalable_Nearest_Neighbor_Algorithms_for_High_Dimensional_Data (2)",
+    "user_id": "default_user",
+    "is_test_document": false,
     "document_type": "pdf",
     "document_hash": "cce08ad9cc664d3387a289e2b5019e8f6d8831dfed6cb160fe048f642122363b",
     "pages": 14,
@@ -8,6 +10,9 @@
     "text_length": 11456,
     "estimated_read_time": 57.28,
     "embedding_status": true,
+    "embedding_status_detail": "verified",
+    "embedding_expected_chunks": 32,
+    "embedding_verified_chunks": 32,
     "ocr_required": false,
     "ocr_quality": 1.0,
     "metadata_completeness": 1.0,

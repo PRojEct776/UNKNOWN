@@ -4,13 +4,22 @@ UNKNOWN Project - FastAPI Application
 Exposes the verified UNKNOWN RAG pipeline through HTTP APIs.
 """
 
+import json
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Request, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+from app.auth import (
+    SessionCreateRequest,
+    SessionResponse,
+    resolve_authenticated_workspace,
+    session_manager,
+)
+from app.rag.document_eligibility import is_test_document
 
 from app.api.schemas import (
     AdaptiveAnswerRequest,
@@ -38,6 +47,8 @@ from app.api.schemas import (
     Source,
     VisualAnswerRequest,
     VisualAnswerResponse,
+    QueryAssistantRequest,
+    QueryAssistantResponse,
 )
 from app.rag.config import settings
 from app.rag.logger import logger
@@ -98,41 +109,65 @@ def health_check():
 
 
 @app.get("/documents")
-def list_documents():
-    """List indexed research documents."""
+def list_documents(
+    request: Request,
+    user_id: str | None = None,
+    include_test_docs: bool = False,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    """
+    List indexed research documents.
+    Supports workspace scoping, test-fixture filtering, and Document IQ metadata.
+    """
     from app.rag.utils import list_supported_documents
     from app.services.document_service import (
         count_document_chunks,
         load_document_json,
     )
 
+    active_user, has_token = resolve_authenticated_workspace(
+        request, authorization, x_session_token, client_user_id=user_id
+    )
+    effective_user = active_user if (has_token or user_id) else None
+
     documents = []
     for paper_path in list_supported_documents(settings.PAPERS_DIR):
         doc_name = paper_path.name
+        if not include_test_docs and is_test_document(doc_name):
+            continue
+
         try:
             doc_data = load_document_json(doc_name)
+            if effective_user and doc_data.get("user_id") and doc_data.get("user_id") != effective_user:
+                continue
+
             chunks = count_document_chunks(doc_name)
             documents.append(
                 {
                     "name": doc_name,
+                    "document": doc_name,
                     "title": doc_data.get("title", doc_name),
                     "document_type": doc_data.get("document_type", paper_path.suffix),
                     "total_pages": doc_data.get("total_pages", 1),
                     "total_words": doc_data.get("total_words", 0),
                     "chunks_count": chunks,
                     "status": "indexed",
+                    "user_id": doc_data.get("user_id", "default_user"),
                 }
             )
         except Exception:
             documents.append(
                 {
                     "name": doc_name,
+                    "document": doc_name,
                     "title": doc_name,
                     "document_type": paper_path.suffix,
                     "total_pages": 1,
                     "total_words": 0,
                     "chunks_count": 0,
                     "status": "stored",
+                    "user_id": "default_user",
                 }
             )
 
@@ -223,6 +258,7 @@ def download_document(document_name: str):
 
 
 @app.post("/documents/upload")
+@app.post("/upload", include_in_schema=False)
 async def upload_document(file: UploadFile = File(...)):
     """Upload a research document (.pdf, .docx, .txt) and index it."""
     from app.rag.document_loader import DocumentLoader
@@ -232,13 +268,16 @@ async def upload_document(file: UploadFile = File(...)):
     if file_ext not in settings.SUPPORTED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported format '{file_ext}'. Supported: {settings.SUPPORTED_EXTENSIONS}",
+            detail=f"Unsupported file format '{file_ext}'. Supported formats: {', '.join(settings.SUPPORTED_EXTENSIONS)}",
         )
 
     file_name = Path(file.filename or "upload").name
     save_path = settings.PAPERS_DIR / file_name
 
-    existing_docs = list_supported_documents(settings.PAPERS_DIR)
+    existing_docs = [
+        d for d in list_supported_documents(settings.PAPERS_DIR)
+        if not is_test_document(d.name)
+    ]
     existing_names = {d.name for d in existing_docs}
     if len(existing_docs) >= settings.MAX_COLLECTION_PAPERS and file_name not in existing_names:
         raise HTTPException(
@@ -248,11 +287,30 @@ async def upload_document(file: UploadFile = File(...)):
 
     try:
         content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
         if len(content) > settings.MAX_FILE_SIZE_BYTES:
             raise HTTPException(
                 status_code=400,
                 detail=f"File exceeds maximum allowed size of {settings.MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB.",
             )
+
+        import hashlib
+        content_hash = hashlib.sha256(content).hexdigest()
+        if settings.METADATA_DIR.exists():
+            for meta_p in settings.METADATA_DIR.glob("*_metadata.json"):
+                try:
+                    with open(meta_p, "r", encoding="utf-8") as mf:
+                        m_data = json.load(mf)
+                        if m_data.get("document_hash") == content_hash:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Duplicate document detected: content matches existing document '{m_data.get('document')}'",
+                            )
+                except HTTPException:
+                    raise
+                except Exception:
+                    pass
 
         with open(save_path, "wb") as f:
             f.write(content)
@@ -260,6 +318,13 @@ async def upload_document(file: UploadFile = File(...)):
         loader = DocumentLoader()
         doc_json = loader.create_document_json(save_path)
         loader.save_document_json(doc_json)
+
+        from app.services.document_service import build_document_metadata, save_document_metadata
+        from app.rag.scoring import calculate_document_iq
+        metadata = build_document_metadata(file_name)
+        iq_report = calculate_document_iq(metadata)
+        metadata["document_iq"] = iq_report
+        save_document_metadata(metadata)
 
         # Automatically re-chunk and build BM25 & FAISS indexes
         from app.rag.chunker import DocumentChunker
@@ -315,7 +380,10 @@ async def upload_batch_documents(files: list[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="No files provided in batch upload.")
 
-    existing_docs = list_supported_documents(settings.PAPERS_DIR)
+    existing_docs = [
+        d for d in list_supported_documents(settings.PAPERS_DIR)
+        if not is_test_document(d.name)
+    ]
     existing_names = {d.name for d in existing_docs}
 
     new_files = [f for f in files if Path(f.filename or "").name not in existing_names]
@@ -862,6 +930,11 @@ def contradictions(request: ContradictionRequest):
     response_model=ResearchComparisonResponse,
 )
 def compare(request: ResearchComparisonRequest):
+    if request.document_names and len(request.document_names) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 10 documents allowed for comparison or filtering.",
+        )
     start_time = time.perf_counter()
 
     try:
@@ -1324,3 +1397,41 @@ async def serve_spa_fallback(full_path: str):
         return FileResponse(str(index_file))
 
     raise HTTPException(status_code=404, detail="Not Found")
+
+
+@app.post(
+    "/query-assistant",
+    response_model=QueryAssistantResponse,
+    responses={
+        400: {"description": "Invalid query."},
+        500: {"description": "Query Assistant processing failure."},
+    },
+)
+def query_assistant(
+    request: QueryAssistantRequest,
+    raw_req: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+):
+    """Improve research queries and suggest the best UNKNOWN tool."""
+    active_user, _ = resolve_authenticated_workspace(
+        raw_req, authorization, x_session_token, client_user_id=request.user_id
+    )
+    try:
+        res = rag_service.query_assistant(request.query, task=request.task)
+        return QueryAssistantResponse(
+            original_query=res.get("original_query", request.query),
+            refined_query=res.get("refined_query", request.query),
+            suggested_task=res.get("suggested_task", "Research Assistant"),
+            explanation=res.get("explanation", "Research Assistant"),
+            alternative_queries=res.get("alternative_queries", []),
+            tips=res.get("tips", []),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("Query Assistant failed.")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Query Assistant failed: {error}",
+        ) from error

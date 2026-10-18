@@ -1299,17 +1299,25 @@ export const KnowledgeWorkspacePage: React.FC = () => {
             <div className="space-y-6">
               {/* Status Header */}
               <div className={`rounded-xl border px-4 py-3 text-xs leading-relaxed flex items-center justify-between ${
-                activeResult.origin === 'static-demo'
-                  ? 'border-amber-200/20 bg-amber-200/[0.04] text-amber-100/80'
-                  : 'border-[#4d728e]/25 bg-[#141d26]/60 text-[#f3faf0]/75'
+                activeResult.origin === 'backend'
+                  ? 'border-emerald-500/25 bg-[#141d26]/80 text-[#f3faf0]/85'
+                  : activeResult.origin === 'static-demo'
+                  ? 'border-amber-400/25 bg-amber-400/[0.05] text-amber-200/90'
+                  : 'border-orange-400/25 bg-orange-400/[0.05] text-orange-200/90'
               }`}>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono font-semibold uppercase text-emerald-400">● Live Backend Response</span>
+                  {activeResult.origin === 'backend' ? (
+                    <span className="font-mono font-semibold uppercase text-emerald-400">● Live Backend Response</span>
+                  ) : activeResult.origin === 'static-demo' ? (
+                    <span className="font-mono font-semibold uppercase text-amber-400">○ Static Demo Data</span>
+                  ) : (
+                    <span className="font-mono font-semibold uppercase text-orange-400">▲ Local Fallback (Backend Offline/Unavailable)</span>
+                  )}
                   <span>·</span>
                   <span className="text-[#a7d0d2] font-mono">{modeTitles[activeResult.request.mode]}</span>
                 </div>
                 <div className="text-[11px] font-mono text-[#f3faf0]/50">
-                  {activeResult.sources.length} Sources Retrieved
+                  {activeResult.sources.length} Sources {activeResult.origin === 'backend' ? 'Retrieved' : 'Referenced'}
                 </div>
               </div>
 

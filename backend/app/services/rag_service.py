@@ -171,6 +171,10 @@ class RAGService:
         self.research_gap_finder = ResearchGapFinder()
         logger.info("RAG Service indexes and dependent components reloaded successfully.")
 
+    def reload_retriever(self) -> None:
+        """Reload retrieval engine (BM25 + FAISS) after new documents are indexed."""
+        self.reload_indexes()
+
     # ======================================================
 
     # QUERY TYPE MAPPING
@@ -1165,3 +1169,113 @@ Rules:
                 raise ValueError(
                     "Visual answer remained invalid after one repair attempt."
                 ) from repair_error
+
+    def query_assistant(
+        self,
+        query: str,
+        task: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        AI Research Assistant chatbot helper.
+        Clarifies intent, refines vague queries, and recommends the optimal UNKNOWN tool.
+        """
+        if not query or not query.strip():
+            raise ValueError("Query must not be empty.")
+
+        cleaned_query = query.strip()
+        system_prompt = f"""You are the UNKNOWN Academic Query Assistant.
+Your goal is to transform user queries into precise, high-yield academic research prompts and select the best specialized tool.
+
+Available UNKNOWN Tools:
+- "Research Assistant": Standard factual or descriptive Q&A from literature.
+- "Multi-Step Reasoning": Complex analytical or causal questions requiring decomposed sub-questions.
+- "Verify Claim": Assessing whether a specific factual hypothesis/assertion is supported.
+- "Discover Concept": Reverse-engineering a technical concept from an informal description.
+- "Contradictions": Detecting conflicting claims or disputes across papers.
+- "Compare Research": Comparing 2 to 10 entities, techniques, or algorithms across aspects.
+- "Research Gaps": Identifying open questions, unresolved limitations, or future directions.
+- "Research Debate": Formulating two opposing intellectual perspectives.
+- "Knowledge DNA": Deconstructing foundational concepts, methods, findings, and themes.
+- "Knowledge Mind Map": Graph-based conceptual and relationship visualization.
+- "Adaptive Answer": Producing custom-depth explanations for beginners to experts.
+- "Visual Answer": Step-by-step visual, table, or flowchart breakdown.
+
+Input Query: "{cleaned_query}"
+Current Task: "{task or 'General'}"
+
+Return ONLY valid JSON:
+{{
+  "refined_query": "...",
+  "suggested_task": "...",
+  "explanation": "...",
+  "alternative_queries": ["...", "..."],
+  "tips": ["..."]
+}}""".strip()
+
+        try:
+            resp = self.llm.generate_structured(system_prompt)
+            if resp.success and resp.answer:
+                cleaned = re.sub(r"^```(?:json)?\s*", "", resp.answer.strip(), flags=re.IGNORECASE)
+                cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+                data = json.loads(cleaned)
+                if isinstance(data, dict) and "refined_query" in data and "suggested_task" in data:
+                    return {
+                        "original_query": cleaned_query,
+                        "refined_query": str(data.get("refined_query", cleaned_query)),
+                        "suggested_task": str(data.get("suggested_task", "Research Assistant")),
+                        "explanation": str(data.get("explanation", "Optimized for academic evidence retrieval.")),
+                        "alternative_queries": list(data.get("alternative_queries", [])),
+                        "tips": list(data.get("tips", ["Use specific terminology found in peer-reviewed abstracts."])),
+                    }
+        except Exception as exc:
+            logger.warning(f"LLM query assistant failed: {exc}")
+
+        # Rule-based fallback
+        low = cleaned_query.lower()
+        if any(w in low for w in ["compare", "vs", "versus", "difference between", "better than"]):
+            suggested = "Compare Research"
+            refined = f"Comparative analysis: {cleaned_query}"
+            explanation = "Detected comparison keywords. The Compare Research tool structures entities and evaluation criteria."
+        elif any(w in low for w in ["verify", "is it true", "fact check", "claim", "proven"]):
+            suggested = "Verify Claim"
+            refined = f"Evaluate the claim: {cleaned_query}"
+            explanation = "Detected verification intent. The Verify Claim tool validates statements against citations."
+        elif any(w in low for w in ["gap", "limitation", "open question", "future work", "unresolved"]):
+            suggested = "Research Gaps"
+            refined = f"Systematic identification of research gaps regarding {cleaned_query}"
+            explanation = "Detected exploratory gap intent. The Research Gaps tool isolates unaddressed challenges in literature."
+        elif any(w in low for w in ["why", "how does", "mechanism", "causal", "cause"]):
+            suggested = "Multi-Step Reasoning"
+            refined = f"Multi-step causal and analytical breakdown of {cleaned_query}"
+            explanation = "Detected analytical inquiry. Srinidhi's Reasoning Engine decomposes queries into multi-hop subquestions."
+        elif any(w in low for w in ["conflict", "contradict", "disagree", "dispute", "debate"]):
+            suggested = "Contradictions"
+            refined = f"Conflicting evidence and divergent findings regarding {cleaned_query}"
+            explanation = "Detected contradiction/dispute intent. Contradictions tool locates opposing evidence."
+        elif any(w in low for w in ["mind map", "graph", "relations", "connect"]):
+            suggested = "Knowledge Mind Map"
+            refined = f"Conceptual mind map and relational structure of {cleaned_query}"
+            explanation = "Detected relational structure intent. Knowledge Mind Map generates interactive concept DAGs."
+        elif any(w in low for w in ["what is called", "what term", "concept for", "forgot the name"]):
+            suggested = "Discover Concept"
+            refined = cleaned_query
+            explanation = "Detected term discovery intent. Discover Concept matches informal descriptions to formal concepts."
+        else:
+            suggested = "Research Assistant"
+            refined = f"Investigating the principles, evidence, and state-of-the-art of {cleaned_query}"
+            explanation = "Formulated query with academic terminology for maximum lexical and semantic retrieval precision."
+
+        return {
+            "original_query": cleaned_query,
+            "refined_query": refined,
+            "suggested_task": suggested,
+            "explanation": explanation,
+            "alternative_queries": [
+                f"Empirical evaluation of {cleaned_query}",
+                f"Theoretical framework and methodology in {cleaned_query}",
+            ],
+            "tips": [
+                "Specify target performance metrics or experimental variables.",
+                "Mention key authors, model names, or benchmark datasets.",
+            ],
+        }

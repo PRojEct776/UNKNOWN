@@ -20,6 +20,15 @@ class QueryRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class Source(BaseModel):
@@ -56,6 +65,15 @@ class ClaimVerificationRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class ClaimVerificationResponse(BaseModel):
@@ -83,6 +101,15 @@ class ContradictionRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class EvidenceClaimResponse(BaseModel):
@@ -127,6 +154,15 @@ class ResearchComparisonRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class ResearchGapRequest(BaseModel):
@@ -140,6 +176,15 @@ class ResearchGapRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class ResearchGapResponse(BaseModel):
@@ -176,6 +221,15 @@ class DebateRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class DebateResponse(BaseModel):
@@ -201,6 +255,15 @@ class KnowledgeDNARequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class KnowledgeDNAResponse(BaseModel):
@@ -228,6 +291,15 @@ class KnowledgeMindMapRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class KnowledgeMindMapResponse(BaseModel):
@@ -249,6 +321,15 @@ class AdaptiveAnswerRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class AdaptiveAnswerResponse(BaseModel):
@@ -267,6 +348,15 @@ class VisualAnswerRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class VisualAnswerResponse(BaseModel):
@@ -315,6 +405,15 @@ class ConceptDiscoveryRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class ConceptDiscoveryResponse(BaseModel):
@@ -341,6 +440,15 @@ class ReasoningRequest(BaseModel):
         default=None,
         description="Optional list of document names to scope retrieval to.",
     )
+    user_id: str | None = None
+    documents: list[str] | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.document_names is None and self.documents is not None:
+            self.document_names = self.documents
+        elif self.documents is None and self.document_names is not None:
+            self.documents = self.document_names
 
 
 class ReasoningResponse(BaseModel):
@@ -350,3 +458,32 @@ class ReasoningResponse(BaseModel):
     subquestions: list[str]
     answer: str
     sources: list[Source]
+
+
+class QueryAssistantRequest(BaseModel):
+    """Incoming query improvement request."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Raw or vague user question to refine.",
+    )
+    task: str | None = Field(
+        default=None,
+        description="Optional target UNKNOWN tool/task.",
+    )
+    user_id: str | None = None
+    documents: list[str] | None = None
+    document_names: list[str] | None = None
+
+
+class QueryAssistantResponse(BaseModel):
+    """Refined query and guidance suggestions."""
+
+    original_query: str
+    refined_query: str
+    suggested_task: str
+    explanation: str
+    alternative_queries: list[str]
+    tips: list[str]
