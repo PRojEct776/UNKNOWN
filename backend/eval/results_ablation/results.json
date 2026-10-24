@@ -1,0 +1,30 @@
+{
+  "metadata": {
+    "sample": 10,
+    "seed": 42,
+    "use_sufficiency": false,
+    "use_verification": false,
+    "use_reliability": true,
+    "datasets": [
+      "scifact"
+    ],
+    "strategies": [
+      "bm25",
+      "rrf"
+    ]
+  },
+  "results": {
+    "scifact": {
+      "bm25": {
+        "Recall@10": 1.0,
+        "nDCG@10": 1.0,
+        "MRR": 1.0
+      },
+      "rrf": {
+        "Recall@10": 1.0,
+        "nDCG@10": 1.0,
+        "MRR": 1.0
+      }
+    }
+  }
+}

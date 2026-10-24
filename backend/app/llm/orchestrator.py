@@ -136,6 +136,39 @@ class LLMOrchestrator:
 
         return self._failure(start, " | ".join(failures), last_kind)
 
+    def generate_grounded(self, prompt: str) -> LLMResponse:
+        """Like generate() but forces temperature=0 per Task A1."""
+        start = perf_counter()
+
+        if not prompt or not prompt.strip():
+            return self._failure(start, "Prompt is empty.", ErrorKind.INVALID_REQUEST)
+
+        deadline = monotonic() + self.total_timeout_s
+        failures: list[str] = []
+        last_kind: ErrorKind | None = None
+
+        for provider in self._candidates():
+            if failures and monotonic() >= deadline:
+                logger.warning("LLM grounded time budget spent.")
+                break
+
+            # Use temperature-override method when available (Task A1)
+            _call_zero = getattr(provider, "generate_at_zero_temperature", None)
+            if callable(_call_zero):
+                response = _call_zero(prompt)
+            else:
+                response = provider.generate(prompt)
+
+            self.health.record(response)
+
+            if response.success:
+                return response
+
+            failures.append(f"{response.provider}: {response.error}")
+            last_kind = response.error_kind
+
+        return self._failure(start, " | ".join(failures), last_kind)
+
     def generate_structured(
         self,
         prompt: str,

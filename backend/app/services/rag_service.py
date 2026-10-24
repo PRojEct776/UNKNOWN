@@ -41,7 +41,11 @@ Additional capabilities:
 from typing import Any
 
 from app.api.schemas import (
+    AnswerResponse,
+    AnswerRequest,
+    Claim,
     ClaimVerificationResponse,
+    ComparisonPair,
     QueryResponse,
     Source,
 )
@@ -74,6 +78,8 @@ from app.rag.research_comparison import ResearchComparisonEngine
 from app.rag.research_gap_finder import ResearchGapFinder
 from app.rag.scoring import calculate_document_iq
 from app.rag.visual_answer import VisualAnswerEngine
+from app.rag.grounded_generation import grounded_generate, NOT_FOUND as GROUNDED_NOT_FOUND
+from app.rag.dual_retriever import DualRetriever, web_chunk_to_source_dict
 from app.reasoning.reasoning_engine import ReasoningEngine
 from app.services.document_service import (
     build_document_metadata,
@@ -149,6 +155,75 @@ class RAGService:
 
         logger.info("UNKNOWN X RAG Service initialized successfully.")
 
+    # ======================================================
+
+    # DUAL-RETRIEVAL ANSWER  (Task A8)
+
+    # ======================================================
+
+    def answer(
+        self,
+        query: str,
+        document_names: list[str] | None = None,
+        doc_only: bool = False,
+        scope: str | None = None,
+    ) -> AnswerResponse:
+        """
+        Dual-retrieval answer: retrieve from user documents and (unless doc_only) from
+        web connectors.  Produces doc_section, web_section, comparison[] pairs.
+
+        When doc_only=True, connectors are never called (scope enforcement).
+        """
+        if not query or not query.strip():
+            raise ValueError("Query must not be empty.")
+
+        dr = DualRetriever(retriever=self.retriever, llm=self.llm)
+        result = dr.dual_retrieve(
+            query=query,
+            document_names=document_names,
+            doc_only=doc_only,
+            scope=scope,
+        )
+
+        # Build canonical sources from both channels
+        all_raw = list(result.doc_sources) + [
+            web_chunk_to_source_dict(c) for c in result.web_sources
+        ]
+        sources = self._build_sources(all_raw)
+
+        # Convert ComparisonPair dataclasses to schema objects
+        comparison_schema = [
+            ComparisonPair(
+                sub_question=p.sub_question,
+                label=p.label,
+                doc_quote=p.doc_quote,
+                web_quote=p.web_quote,
+                doc_source=p.doc_source,
+                web_source=p.web_source,
+                nli_entail=p.nli_entail,
+                nli_contra=p.nli_contra,
+            )
+            for p in result.comparison
+        ]
+
+        logger.info(
+            "DualRetriever answer completed: %d doc chunks, %d web chunks, "
+            "%d comparison pairs",
+            len(result.doc_sources),
+            len(result.web_sources),
+            len(result.comparison),
+        )
+
+        return AnswerResponse(
+            summary=result.summary,
+            detail=result.detail,
+            doc_section=result.doc_section,
+            web_section=result.web_section,
+            comparison=comparison_schema,
+            sources=sources,
+            gaps=result.gaps,
+        )
+
     def reload_indexes(self):
         """Reload all search indexes and dependent engines after document ingestion."""
         self.retriever = HybridSearch()
@@ -218,51 +293,9 @@ class RAGService:
 
     @staticmethod
     def _build_sources(results) -> list[Source]:
-        """
-
-        Convert retrieval results into API Source objects.
-
-        """
-
-        return [
-            Source(
-                rank=result.get(
-                    "rank",
-                    0,
-                ),
-                document=result.get(
-                    "document",
-                    "Unknown",
-                ),
-                page=result.get(
-                    "page",
-                    "N/A",
-                ),
-                chunk_id=result.get(
-                    "chunk_id",
-                    "N/A",
-                ),
-                hybrid_score=float(
-                    result.get(
-                        "hybrid_score",
-                        0.0,
-                    )
-                ),
-                bm25_score=float(
-                    result.get(
-                        "bm25_score",
-                        0.0,
-                    )
-                ),
-                faiss_score=float(
-                    result.get(
-                        "faiss_score",
-                        0.0,
-                    )
-                ),
-            )
-            for result in results
-        ]
+        """Convert retrieval results into canonical API Source objects."""
+        from app.rag.confidence import build_sources
+        return build_sources(results)
 
     # ======================================================
 
@@ -386,18 +419,7 @@ class RAGService:
                         sources=[],
                     )
 
-                sources = [
-                    Source(
-                        rank=source.get("rank", 0),
-                        document=source.get("document", "Unknown"),
-                        page=source.get("page", "N/A"),
-                        chunk_id=source.get("chunk_id", "N/A"),
-                        hybrid_score=float(source.get("hybrid_score", 0.0)),
-                        bm25_score=float(source.get("bm25_score", 0.0)),
-                        faiss_score=float(source.get("faiss_score", 0.0)),
-                    )
-                    for source in reasoning_result.get("sources", [])
-                ]
+                sources = self._build_sources(reasoning_result.get("sources", []))
 
                 return QueryResponse(
                     query=normalized_query,
@@ -487,77 +509,66 @@ class RAGService:
             processed_documents.add(document_name)
 
         # ==================================================
-
-        # 5. CONTEXT BUILDING
-
+        # 5-9. GROUNDED GENERATION (Task A1)
+        # The LLM sees ONLY retrieved passages; temperature=0;
+        # every sentence must have a verbatim quote from a cited passage.
         # ==================================================
 
-        context = self.context_builder.build(results)
+        def _llm_call(prompt: str, temperature: float = 0.0) -> str:  # noqa: ARG001
+            """Wrapper that routes through the grounded-temperature path."""
+            resp = self.llm.generate_grounded(prompt)
+            if not resp.success:
+                error = RuntimeError(resp.error or "LLM generation failed.")
+                error.error_kind = resp.error_kind  # type: ignore
+                raise error
+            return resp.answer
 
-        # ==================================================
-
-        # 6. PROMPT GENERATION
-
-        # ==================================================
-
-        prompt = self.prompt_engine.build_prompt(
+        answer, verified_sentences = grounded_generate(
+            llm_generate_fn=_llm_call,
             query=normalized_query,
-            context=context,
-            query_type=query_type,
+            passages=results,
         )
 
-        # ==================================================
-
-        # 7. MULTI-LLM GENERATION
-
-        # ==================================================
-
-        response = self.llm.generate(prompt)
-
-        if not response.success:
-
-            error = RuntimeError(response.error or "LLM generation failed.")
-
-            error.error_kind = response.error_kind  # type: ignore
-
-            raise error
-
-        answer = response.answer.strip()
-
-        abstention = "The retrieved context does not contain enough information."
-
-        if answer.casefold() == abstention.casefold():
-            logger.info(
-                "Insufficient evidence reported; returning no supporting sources."
-            )
+        if answer == GROUNDED_NOT_FOUND or not verified_sentences:
+            logger.info("Grounded generation: no verified sentences; abstaining.")
             return QueryResponse(
                 query=normalized_query,
                 query_type=query_type.value,
-                answer=abstention,
+                answer=GROUNDED_NOT_FOUND,
                 sources=[],
             )
 
-        # ==================================================
-
-        # 8. SOURCE FORMATTING
-
-        # ==================================================
+        # Task A5: Atomic claim verification, regeneration and filtering
+        try:
+            from app.rag.atomic_claims import process_and_verify_claims
+            claims, refined_answer = process_and_verify_claims(
+                answer=answer,
+                passages=results,
+                llm=self.llm,
+            )
+            if refined_answer and refined_answer != GROUNDED_NOT_FOUND:
+                answer = refined_answer
+        except Exception as exc:
+            logger.warning("Atomic claim verification failed (%s); using verified sentences.", exc)
+            claims = [
+                Claim(
+                    text=s.get("text", ""),
+                    label="supported",
+                    source_ids=[str(sid) for sid in s.get("source_ids", [])],
+                    quote=s.get("quote"),
+                )
+                for s in verified_sentences
+            ]
 
         sources = self._build_sources(results)
-
-        logger.info("Pipeline completed successfully " f"with {len(sources)} sources.")
-
-        # ==================================================
-
-        # 9. API RESPONSE
-
-        # ==================================================
+        logger.info("Grounded pipeline completed with %d verified sentences, %d claims.", len(verified_sentences), len(claims))
 
         return QueryResponse(
             query=normalized_query,
             query_type=query_type.value,
             answer=answer,
             sources=sources,
+            claims=claims,
         )
 
     # ======================================================

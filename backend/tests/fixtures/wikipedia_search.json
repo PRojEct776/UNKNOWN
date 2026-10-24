@@ -1,0 +1,26 @@
+{
+  "batchcomplete": "",
+  "continue": {"sroffset": 10, "continue": "-||"},
+  "query": {
+    "search": [
+      {
+        "ns": 0,
+        "title": "Transformer (machine learning model)",
+        "pageid": 59373358,
+        "size": 74131,
+        "wordcount": 8327,
+        "snippet": "A <span class=\"searchmatch\">transformer</span> is a deep learning architecture ...",
+        "timestamp": "2024-01-15T10:00:00Z"
+      },
+      {
+        "ns": 0,
+        "title": "Attention (machine learning)",
+        "pageid": 59230123,
+        "size": 45000,
+        "wordcount": 5100,
+        "snippet": "Attention mechanisms are core to modern neural networks ...",
+        "timestamp": "2024-01-14T09:00:00Z"
+      }
+    ]
+  }
+}

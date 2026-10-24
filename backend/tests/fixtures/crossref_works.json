@@ -1,0 +1,36 @@
+{
+  "status": "ok",
+  "message-type": "work-list",
+  "message-version": "1.0.0",
+  "message": {
+    "total-results": 1,
+    "items": [
+      {
+        "DOI": "10.1145/3318464.3389700",
+        "title": [
+          "Scalable Nearest Neighbor Algorithms for High Dimensional Data"
+        ],
+        "abstract": "<jats:p>Nearest neighbor search is an essential operation in many data-intensive applications. We present scalable algorithms for high-dimensional nearest neighbor search.</jats:p>",
+        "author": [
+          {
+            "given": "Marius",
+            "family": "Muja"
+          },
+          {
+            "given": "David G.",
+            "family": "Lowe"
+          }
+        ],
+        "published-print": {
+          "date-parts": [
+            [2014, 1, 1]
+          ]
+        },
+        "container-title": [
+          "IEEE Transactions on Pattern Analysis and Machine Intelligence"
+        ],
+        "URL": "http://dx.doi.org/10.1145/3318464.3389700"
+      }
+    ]
+  }
+}

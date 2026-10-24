@@ -4,7 +4,108 @@ UNKNOWN Project - FastAPI Schemas
 Defines request and response models for the UNKNOWN API.
 """
 
+from typing import Any
+
 from pydantic import BaseModel, Field
+
+
+class Claim(BaseModel):
+    """Atomic claim extracted and verified from generation."""
+
+    text: str
+    label: str = Field(
+        default="supported",
+        description="Verification verdict: supported, partial, unsupported, contradicted",
+    )
+    source_ids: list[str] = Field(default_factory=list)
+    quote: str | None = None
+
+
+class Conflict(BaseModel):
+    """Contradiction or disagreement between claims."""
+
+    topic: str
+    side_a: str
+    side_b: str
+    likely_reason: str | None = None
+
+
+class ConfidenceBreakdown(BaseModel):
+    """Breakdown of confidence score components."""
+
+    evidence_coverage: float = Field(..., ge=0.0, le=1.0)
+    claim_support: float = Field(..., ge=0.0, le=1.0)
+    source_agreement: float = Field(..., ge=0.0, le=1.0)
+    source_quality: float = Field(..., ge=0.0, le=1.0)
+
+
+class Confidence(BaseModel):
+    """Deterministic confidence score and breakdown."""
+
+    score: float = Field(..., ge=0.0, le=100.0)
+    breakdown: ConfidenceBreakdown
+    formula_version: str = "v1.0"
+
+
+class ComparisonPair(BaseModel):
+    """NLI-labelled pair comparing a doc passage against a web passage for a sub-question."""
+
+    sub_question: str = Field(..., description="The (sub-)question this pair addresses")
+    label: str = Field(
+        ...,
+        description="NLI verdict: agree | disagree | not_addressed",
+    )
+    doc_quote: str = Field("", description="Verbatim excerpt from the document channel")
+    web_quote: str = Field("", description="Verbatim excerpt from the web channel")
+    doc_source: str = Field("", description="Document name + page/chunk citation")
+    web_source: str = Field("", description="URL from the web channel")
+    nli_entail: float = Field(0.0, ge=0.0, le=1.0)
+    nli_contra: float = Field(0.0, ge=0.0, le=1.0)
+
+
+class AnswerRequest(BaseModel):
+    """Request for the /answer dual-retrieval endpoint."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="User's natural-language question.",
+    )
+    document_names: list[str] | None = Field(
+        default=None,
+        description="Scope list: only these docs will be searched. "
+                    "Pass an empty list to search no documents (web-only). "
+                    "Omit to use all authorized docs.",
+    )
+    doc_only: bool = Field(
+        default=False,
+        description="If True, skip all web connector calls (document-only scope).",
+    )
+    scope: str | None = Field(
+        default=None,
+        description="Scope restriction, e.g. 'document only'.",
+    )
+    user_id: str | None = None
+
+
+class AnswerResponse(BaseModel):
+    """Standardized answer response containing atomic claims and evidence breakdown."""
+
+    summary: str = Field("", description="Max 3-sentence summary")
+    detail: str = Field("", description="Full answer text from both channels")
+    doc_section: str | None = Field(None, description="Grounded doc answer with page/chunk citations")
+    web_section: str | None = Field(None, description="Grounded web answer with live URL citations")
+    comparison: list[ComparisonPair] = Field(
+        default_factory=list,
+        description="Per-sub-question pairs labelled agree/disagree/not_addressed with both quotes",
+    )
+    sources: list[Any] = Field(default_factory=list)
+    claims: list[Claim] = Field(default_factory=list)
+    conflicts: list[Conflict] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    confidence: Confidence | None = None
+    trace_id: str | None = None
 
 
 class QueryRequest(BaseModel):
@@ -32,15 +133,28 @@ class QueryRequest(BaseModel):
 
 
 class Source(BaseModel):
-    """Retrieved source information."""
+    """Canonical source model returned by UNKNOWN endpoints."""
 
-    rank: int
-    document: str
-    page: int | str
-    chunk_id: str
-    hybrid_score: float
-    bm25_score: float
-    faiss_score: float
+    id: str = "unknown"
+    rank: int = 0
+    document: str = "Unknown"
+    page: int | str = "N/A"
+    chunk_id: str = "N/A"
+    hybrid_score: float = 0.0
+    bm25_score: float = 0.0
+    faiss_score: float = 0.0
+    title: str | None = None
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = None
+    venue: str | None = None
+    doi: str | None = None
+    url: str | None = None
+    origin: str = "document"
+    passage: str | None = None
+    quote: str | None = None
+    retrieved_at: str | None = None
+    reliability: float = 0.0
+    warnings: list[str] = Field(default_factory=list)
 
 
 class QueryResponse(BaseModel):
@@ -50,6 +164,8 @@ class QueryResponse(BaseModel):
     query_type: str
     answer: str
     sources: list[Source]
+    claims: list[Claim] = Field(default_factory=list)
+    confidence: Confidence | None = None
 
 
 class ClaimVerificationRequest(BaseModel):

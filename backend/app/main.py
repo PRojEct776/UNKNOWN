@@ -26,8 +26,11 @@ from app.rag.document_eligibility import (
 )
 
 from app.api.schemas import (
+    AnswerRequest,
+    AnswerResponse,
     AdaptiveAnswerRequest,
     AdaptiveAnswerResponse,
+    ComparisonPair,
     ClaimVerificationRequest,
     ClaimVerificationResponse,
     ConceptDiscoveryRequest,
@@ -55,6 +58,7 @@ from app.api.schemas import (
     QueryAssistantResponse,
 )
 from app.rag.config import settings
+from app.rag.confidence import build_sources
 from app.rag.logger import logger
 from app.services.rag_service import (
     RAGService,
@@ -740,18 +744,7 @@ def reason(request: ReasoningRequest):
     start_time = time.perf_counter()
     try:
         result = rag_service.reason(request.query, document_names=request.document_names)
-        sources = [
-            Source(
-                rank=s.get("rank", idx),
-                document=s.get("document", "Unknown"),
-                page=s.get("page", 1),
-                chunk_id=s.get("chunk_id", f"chunk_{idx}"),
-                hybrid_score=float(s.get("hybrid_score", 0.0)),
-                bm25_score=float(s.get("bm25_score", 0.0)),
-                faiss_score=float(s.get("faiss_score", 0.0)),
-            )
-            for idx, s in enumerate(result.get("sources", []), start=1)
-        ]
+        sources = build_sources(result.get("sources", []))
         return ReasoningResponse(
             query=result["query"],
             subquestions=result.get("subquestions", []),
@@ -1356,6 +1349,51 @@ def knowledge_mind_map(request: KnowledgeMindMapRequest):
             "Knowledge mind map endpoint completed in %.2f ms.",
             elapsed_ms,
         )
+
+
+@app.post(
+    "/answer",
+    response_model=AnswerResponse,
+    responses={
+        400: {"description": "Invalid query."},
+        500: {"description": "Dual-retrieval failed."},
+    },
+)
+def answer(request: AnswerRequest):
+    """
+    Dual-retrieval answer endpoint (Task A8).
+
+    Retrieves evidence from user documents (respecting doc_only scope) and from
+    live web connectors separately.  Produces:
+      - doc_section: grounded paragraph with page/chunk citations
+      - web_section: grounded paragraph with live URLs (retrieved_at set now)
+      - comparison[]: per-sub-question pairs labelled agree/disagree/not_addressed
+      - summary: max 3 sentences
+      - detail: full combined answer
+
+    When doc_only=True, connectors are never invoked.
+    """
+    if not request.query or not request.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty.")
+
+    start_time = time.perf_counter()
+    try:
+        result = rag_service.answer(
+            query=request.query,
+            document_names=request.document_names,
+            doc_only=request.doc_only,
+            scope=getattr(request, "scope", None),
+        )
+        return result
+    except ValueError as error:
+        logger.exception("Answer endpoint: invalid request.")
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("Answer endpoint: unexpected failure.")
+        raise HTTPException(status_code=500, detail="Dual-retrieval answer failed.") from error
+    finally:
+        elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.info("Answer endpoint completed in %.2f ms.", elapsed_ms)
 
 
 @app.post(

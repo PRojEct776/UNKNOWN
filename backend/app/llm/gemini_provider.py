@@ -240,6 +240,63 @@ class GeminiProvider(BaseProvider):
             ErrorKind.EMPTY, f"Empty Gemini response, finish_reason={finish}{hint}."
         )
 
+    def generate_at_zero_temperature(self, prompt: str) -> "LLMResponse":
+        """Call Gemini at temperature=0 for grounded generation (Task A1)."""
+        from time import perf_counter
+        from app.llm.base_provider import LLMResponse
+
+        start = perf_counter()
+        # Build a zero-temperature config, preserving other settings
+        config_kwargs = {k: v for k, v in self._config_kwargs.items()}
+        config_kwargs["temperature"] = 0.0
+        config = types.GenerateContentConfig(**config_kwargs)
+
+        error_msg: str | None = None
+        error_kind = None
+        answer = ""
+        try:
+            last_error = None
+            for model_name in self._candidate_models():
+                for attempt in range(1, 3):
+                    try:
+                        response = self.client.models.generate_content(  # type: ignore
+                            model=model_name,
+                            contents=prompt,
+                            config=config,
+                        )
+                        text = response.text
+                        if text and text.strip():
+                            answer = text.strip()
+                            return LLMResponse(
+                                answer=answer,
+                                provider=self.provider_name,
+                                model=model_name,
+                                latency_ms=round((perf_counter() - start) * 1000, 2),
+                                success=True,
+                            )
+                        last_error = self._empty_error(response)
+                        break
+                    except Exception as exc:
+                        last_error = exc
+                        import time as _time
+                        _time.sleep(1)
+            if last_error is not None:
+                raise last_error
+        except Exception as exc:
+            from app.llm.base_provider import ErrorKind as EK
+            error_msg = str(exc)[:500]
+            error_kind = self._kind_of(exc)
+
+        return LLMResponse(
+            answer="",
+            provider=self.provider_name,
+            model=self.model,
+            latency_ms=round((perf_counter() - start) * 1000, 2),
+            success=False,
+            error=error_msg,
+            error_kind=error_kind,
+        )
+
     def _classify(self, exc: Exception) -> ErrorKind:
         if isinstance(exc, errors.APIError):
             code = exc.code

@@ -1,0 +1,132 @@
+{
+  "metadata": {
+    "sample": 50,
+    "seed": 42,
+    "use_sufficiency": true,
+    "use_verification": true,
+    "use_reliability": true,
+    "datasets": [
+      "scifact",
+      "qasper",
+      "beir_nfcorpus",
+      "beir_scifact"
+    ],
+    "strategies": [
+      "bm25",
+      "faiss",
+      "rrf",
+      "rrf+rerank",
+      "full"
+    ]
+  },
+  "results": {
+    "scifact": {
+      "bm25": {
+        "Recall@10": 0.9,
+        "nDCG@10": 0.8926,
+        "MRR": 0.89
+      },
+      "faiss": {
+        "Recall@10": 0.9,
+        "nDCG@10": 0.8926,
+        "MRR": 0.89
+      },
+      "rrf": {
+        "Recall@10": 0.9,
+        "nDCG@10": 0.8926,
+        "MRR": 0.89
+      },
+      "rrf+rerank": {
+        "Recall@10": 0.9,
+        "nDCG@10": 0.8926,
+        "MRR": 0.89
+      },
+      "full": {
+        "Recall@10": 0.9,
+        "nDCG@10": 0.8926,
+        "MRR": 0.89
+      }
+    },
+    "qasper": {
+      "bm25": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.664,
+        "MRR": 0.57
+      },
+      "faiss": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.6271,
+        "MRR": 0.52
+      },
+      "rrf": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.664,
+        "MRR": 0.57
+      },
+      "rrf+rerank": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.6745,
+        "MRR": 0.5833
+      },
+      "full": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.6745,
+        "MRR": 0.5833
+      }
+    },
+    "beir_nfcorpus": {
+      "bm25": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      },
+      "faiss": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      },
+      "rrf": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      },
+      "rrf+rerank": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      },
+      "full": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      }
+    },
+    "beir_scifact": {
+      "bm25": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      },
+      "faiss": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      },
+      "rrf": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      },
+      "rrf+rerank": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      },
+      "full": {
+        "Recall@10": 0.94,
+        "nDCG@10": 0.94,
+        "MRR": 0.94
+      }
+    }
+  }
+}

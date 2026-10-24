@@ -1,0 +1,38 @@
+{
+  "type": "standard",
+  "title": "Transformer (machine learning model)",
+  "displaytitle": "Transformer (machine learning model)",
+  "namespace": {"id": 0, "text": ""},
+  "wikibase_item": "Q97620826",
+  "titles": {
+    "canonical": "Transformer_(machine_learning_model)",
+    "normalized": "Transformer (machine learning model)",
+    "display": "Transformer (machine learning model)"
+  },
+  "pageid": 59373358,
+  "thumbnail": null,
+  "originalimage": null,
+  "lang": "en",
+  "dir": "ltr",
+  "revision": "1220000000",
+  "tid": "abc",
+  "timestamp": "2024-01-15T10:00:00Z",
+  "description": "Deep learning model using attention",
+  "description_source": "local",
+  "content_urls": {
+    "desktop": {
+      "page": "https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)",
+      "revisions": "https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)?action=history",
+      "edit": "https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)?action=edit",
+      "talk": "https://en.wikipedia.org/wiki/Talk:Transformer_(machine_learning_model)"
+    },
+    "mobile": {
+      "page": "https://en.m.wikipedia.org/wiki/Transformer_(machine_learning_model)"
+    }
+  },
+  "api_urls": {
+    "summary": "https://en.wikipedia.org/api/rest_v1/page/summary/Transformer_(machine_learning_model)"
+  },
+  "extract": "A transformer is a deep learning architecture based on the multi-head attention mechanism, proposed in the paper 'Attention is All You Need'. Unlike recurrent neural networks, transformers process entire sequences simultaneously using self-attention, making them highly parallelizable and efficient for large-scale training.",
+  "extract_html": "<p>A transformer is a deep learning architecture ...</p>"
+}

@@ -1,0 +1,31 @@
+{
+  "stored_at": 1792855676.419954,
+  "chunks": [
+    {
+      "id": "wikipedia:8ba35eedca515d44",
+      "text": "A quantum computer is a computer that represents and processes information using quantum states. Quantum computations exploit phenomena such as superposition, interference, and entanglement. Quantum computers have the potential to complete some calculations exponentially faster than classical computers. For example, a large-scale quantum computer could break widely used encryption schemes and aid physicists in performing physical simulations. However, current hardware implementations of quantum computation are largely experimental and suitable for only certain specialized tasks.",
+      "title": "Quantum computing",
+      "authors": [],
+      "year": null,
+      "venue": "Wikipedia",
+      "doi": null,
+      "url": "https://en.wikipedia.org/wiki/Quantum_computing",
+      "origin": "web",
+      "retrieved_at": "2026-10-24T15:27:55.226038+00:00",
+      "content_hash": "29a16fbd36c4c7697468dc9631e56d7e99eecd18372e2b67e81bff2aecf5c2cf"
+    },
+    {
+      "id": "wikipedia:1de9ea3672b37036",
+      "text": "Superconducting quantum computing is a branch of quantum computing and solid-state physics that implements superconducting electronic circuits as qubits in a quantum processor. These devices are typically microwave-frequency electronic circuits containing Josephson junctions, which are fabricated on solid state chips.",
+      "title": "Superconducting quantum computing",
+      "authors": [],
+      "year": null,
+      "venue": "Wikipedia",
+      "doi": null,
+      "url": "https://en.wikipedia.org/wiki/Superconducting_quantum_computing",
+      "origin": "web",
+      "retrieved_at": "2026-10-24T15:27:56.419701+00:00",
+      "content_hash": "99fd306feb4e30a40a15bd536eaf0526cdbaaab26b0a730b8cdbee6e06f54aca"
+    }
+  ]
+}

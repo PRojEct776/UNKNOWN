@@ -225,3 +225,21 @@ REQUIRED_DIRECTORIES = [
 
 for directory in REQUIRED_DIRECTORIES:
     directory.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Decomposer thresholds (Task A4) — overridable via env vars
+# ---------------------------------------------------------------------------
+DECOMPOSE_MAX_SUBQS: int = int(os.environ.get("DECOMPOSE_MAX_SUBQS", "5"))
+DECOMPOSE_TOP_K: int = int(os.environ.get("DECOMPOSE_TOP_K", "10"))
+DECOMPOSE_MIN_PAPERS: int = int(os.environ.get("DECOMPOSE_MIN_PAPERS", "2"))
+DECOMPOSE_TAU_R: float = float(os.environ.get("DECOMPOSE_TAU_R", "0.50"))
+DECOMPOSE_MAX_ROUNDS: int = int(os.environ.get("DECOMPOSE_MAX_ROUNDS", "2"))
+
+# ---------------------------------------------------------------------------
+# Confidence weights and formula version (Task A7)
+# ---------------------------------------------------------------------------
+CONFIDENCE_W_COVERAGE: float = float(os.environ.get("CONFIDENCE_W_COVERAGE", "0.25"))
+CONFIDENCE_W_CLAIM_SUPPORT: float = float(os.environ.get("CONFIDENCE_W_CLAIM_SUPPORT", "0.35"))
+CONFIDENCE_W_AGREEMENT: float = float(os.environ.get("CONFIDENCE_W_AGREEMENT", "0.20"))
+CONFIDENCE_W_QUALITY: float = float(os.environ.get("CONFIDENCE_W_QUALITY", "0.20"))
+CONFIDENCE_FORMULA_VERSION: str = os.environ.get("CONFIDENCE_FORMULA_VERSION", "v1.0")
