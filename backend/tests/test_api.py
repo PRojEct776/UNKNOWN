@@ -8,6 +8,22 @@ from app.main import app, rag_service
 client = TestClient(app)
 
 
+# ---- helpers for error-path tests ----
+
+def _make_rag_error(message: str, kind: str) -> RuntimeError:
+    """Create a RuntimeError with an ``error_kind`` attribute.
+
+    This mirrors what ``rag_service.query`` raises internally when the
+    LLM provider returns an error response (see rag_service.py L519-523).
+    """
+    error = RuntimeError(message)
+    error.error_kind = kind  # type: ignore[attr-defined]
+    return error
+
+
+# ---- tests ----
+
+
 def test_health():
     response = client.get("/health")
 
@@ -21,45 +37,11 @@ def test_query_rejects_empty_query():
     assert response.status_code == 422
 
 
-def test_query_rate_limit_error():  # type: ignore
-    mock_response = type(
-        "MockResponse",
-        (),
-        {
-            "success": False,
-            "error": "Provider rate limited",
-            "error_kind": "rate_limit",
-        },
-    )()
-
+def test_query_rate_limit_error():
     with patch.object(
-        app.state.rag_service.llm,
-        "generate",
-        return_value=mock_response,
-    ):
-        response = client.post(
-            "/query",
-            json={"query": "What problem does the framework solve?"},
-        )
-
-    assert response.status_code == 429
-
-
-def test_query_rate_limit_error():  # noqa: F811
-    mock_response = type(
-        "MockResponse",
-        (),
-        {
-            "success": False,
-            "error": "Provider rate limited",
-            "error_kind": "rate_limit",
-        },
-    )()
-
-    with patch.object(
-        rag_service.llm,
-        "generate",
-        return_value=mock_response,
+        rag_service,
+        "query",
+        side_effect=_make_rag_error("Provider rate limited", "rate_limit"),
     ):
         response = client.post(
             "/query",
@@ -70,20 +52,10 @@ def test_query_rate_limit_error():  # noqa: F811
 
 
 def test_query_transient_error():
-    mock_response = type(
-        "MockResponse",
-        (),
-        {
-            "success": False,
-            "error": "Provider temporarily unavailable",
-            "error_kind": "transient",
-        },
-    )()
-
     with patch.object(
-        rag_service.llm,
-        "generate",
-        return_value=mock_response,
+        rag_service,
+        "query",
+        side_effect=_make_rag_error("Provider temporarily unavailable", "transient"),
     ):
         response = client.post(
             "/query",
@@ -94,20 +66,10 @@ def test_query_transient_error():
 
 
 def test_query_invalid_request_error():
-    mock_response = type(
-        "MockResponse",
-        (),
-        {
-            "success": False,
-            "error": "Invalid provider request",
-            "error_kind": "invalid_request",
-        },
-    )()
-
     with patch.object(
-        rag_service.llm,
-        "generate",
-        return_value=mock_response,
+        rag_service,
+        "query",
+        side_effect=_make_rag_error("Invalid provider request", "invalid_request"),
     ):
         response = client.post(
             "/query",
@@ -118,20 +80,10 @@ def test_query_invalid_request_error():
 
 
 def test_query_fatal_error():
-    mock_response = type(
-        "MockResponse",
-        (),
-        {
-            "success": False,
-            "error": "Provider rejected request",
-            "error_kind": "fatal",
-        },
-    )()
-
     with patch.object(
-        rag_service.llm,
-        "generate",
-        return_value=mock_response,
+        rag_service,
+        "query",
+        side_effect=_make_rag_error("Provider rejected request", "fatal"),
     ):
         response = client.post(
             "/query",
@@ -152,19 +104,10 @@ def test_query_rejects_oversized_query():
 
 def test_query_accepts_max_length_query():
     with patch.object(
-        rag_service.llm,
-        "generate",
-    ) as mock_generate:
-        mock_generate.return_value = type(
-            "MockResponse",
-            (),
-            {
-                "success": False,
-                "error": "Provider rate limited",
-                "error_kind": "rate_limit",
-            },
-        )()
-
+        rag_service,
+        "query",
+        side_effect=_make_rag_error("Provider rate limited", "rate_limit"),
+    ):
         response = client.post(
             "/query",
             json={"query": "a" * 1000},
