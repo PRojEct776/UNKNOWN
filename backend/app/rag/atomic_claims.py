@@ -504,9 +504,14 @@ def _get_nli_pipeline():
         return _nli_pipeline
     _nli_tried = True
     try:
-        from transformers import pipeline  # type: ignore
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline  # type: ignore
 
-        _nli_pipeline = pipeline("text-classification", model=NLI_MODEL)
+        try:
+            tok = AutoTokenizer.from_pretrained(NLI_MODEL, local_files_only=True)
+            mod = AutoModelForSequenceClassification.from_pretrained(NLI_MODEL, local_files_only=True)
+            _nli_pipeline = pipeline("text-classification", model=mod, tokenizer=tok)
+        except Exception:
+            _nli_pipeline = pipeline("text-classification", model=NLI_MODEL)
         logger.info("HF NLI model loaded: %s", NLI_MODEL)
     except Exception as exc:
         logger.info("HF NLI unavailable (%s); using rule-based entailment fallback.", exc)
@@ -533,6 +538,24 @@ _CONTRADICTION_PAIRS = [
 ]
 
 
+def _normalize_numbers_for_nli(text: str) -> str:
+    """Normalize percentages and numbers so paraphrases like '95% recall' and '0.95 recall' match."""
+    def _pct_to_dec(m):
+        if m.group(1):
+            val = float(m.group(1)) / 100.0
+        elif m.group(2):
+            val = _WORD_NUMBERS[m.group(2).lower()] / 100.0
+        else:
+            return m.group(0)
+        return f"{val:g}"
+
+    pct_pattern = re.compile(
+        r"\b(?:(\d+(?:\.\d+)?)|(" + "|".join(_WORD_NUMBERS.keys()) + r"))\s*(?:%|percent\b|pct\b)",
+        re.IGNORECASE,
+    )
+    return pct_pattern.sub(_pct_to_dec, text)
+
+
 def classify_nli(
     premise: str,
     hypothesis: str,
@@ -547,11 +570,13 @@ def classify_nli(
     if nli_fn is not None:
         return nli_fn(premise, hypothesis)
 
+    p_norm_num = _normalize_numbers_for_nli(premise)
+    h_norm_num = _normalize_numbers_for_nli(hypothesis)
+
     hf_pipe = _get_nli_pipeline()
     if hf_pipe is not None:
         try:
-            # Most NLI pipelines take premise + separator + hypothesis or dict
-            out = hf_pipe(f"{premise} [SEP] {hypothesis}")
+            out = hf_pipe({"text": p_norm_num, "text_pair": h_norm_num}, top_k=None)
             if isinstance(out, list) and out:
                 scores = {"entailment": 0.0, "neutral": 0.0, "contradiction": 0.0}
                 for item in out:
@@ -568,8 +593,8 @@ def classify_nli(
             logger.warning("HF NLI pipeline inference failed: %s; falling back.", exc)
 
     # Pure-Python rule-based semantic NLI fallback
-    p_norm = unicodedata.normalize("NFKC", premise).lower()
-    h_norm = unicodedata.normalize("NFKC", hypothesis).lower()
+    p_norm = unicodedata.normalize("NFKC", p_norm_num).lower()
+    h_norm = unicodedata.normalize("NFKC", h_norm_num).lower()
 
     # 1. Contradiction detection via antonyms and polarity reversal
     for pos, neg in _CONTRADICTION_PAIRS:

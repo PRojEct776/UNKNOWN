@@ -481,10 +481,21 @@ export async function uploadDocumentsBatch(
  * DELETE /documents/{document_name}
  * Delete a research document and rebuild indexes.
  */
-export async function deleteDocument(documentName: string): Promise<void> {
-  await apiFetch<unknown>(
-    `/documents/${encodeURIComponent(documentName)}`,
+export async function deleteDocument(documentName: string, undoWindow: number = 10.0): Promise<{ status: string; document_name: string; undo_window_seconds: number; remaining_chunks: number; message: string }> {
+  return apiFetch<{ status: string; document_name: string; undo_window_seconds: number; remaining_chunks: number; message: string }>(
+    `/documents/${encodeURIComponent(documentName)}?undo_window=${undoWindow}`,
     { method: 'DELETE' },
+  );
+}
+
+/**
+ * POST /documents/{document_name}/undo
+ * Restore a soft-deleted research document.
+ */
+export async function undoDeleteDocument(documentName: string): Promise<{ status: string; document_name: string; total_chunks: number; message: string }> {
+  return apiFetch<{ status: string; document_name: string; total_chunks: number; message: string }>(
+    `/documents/${encodeURIComponent(documentName)}/undo`,
+    { method: 'POST' },
   );
 }
 
@@ -668,4 +679,66 @@ export async function queryKnowledgeMindMap(
     DEFAULT_QUERY_TIMEOUT_MS,
     signal,
   );
+}
+
+
+// ---------------------------------------------------------------------------
+// API functions — History
+// ---------------------------------------------------------------------------
+
+export interface HistoryRecord {
+  id: string;
+  user: string;
+  workspace: string;
+  document_ids: string[];
+  scope: string;
+  query: string;
+  feature: string;
+  result_snapshot: unknown;
+  created_at: string;
+}
+
+export async function fetchHistory(filters?: {
+  user?: string;
+  workspace?: string;
+  feature?: string;
+  document_id?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<HistoryRecord[]> {
+  const params = new URLSearchParams();
+  if (filters?.user) params.set('user', filters.user);
+  if (filters?.workspace) params.set('workspace', filters.workspace);
+  if (filters?.feature) params.set('feature', filters.feature);
+  if (filters?.document_id) params.set('document_id', filters.document_id);
+  if (filters?.limit) params.set('limit', String(filters.limit));
+  if (filters?.offset) params.set('offset', String(filters.offset));
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<HistoryRecord[]>(`/history${qs}`);
+}
+
+export async function fetchHistoryItem(historyId: string): Promise<HistoryRecord> {
+  return apiFetch<HistoryRecord>(`/history/${encodeURIComponent(historyId)}`);
+}
+
+export async function rerunHistoryItem(historyId: string): Promise<HistoryRecord> {
+  return apiFetch<HistoryRecord>(`/history/${encodeURIComponent(historyId)}/rerun`, {
+    method: 'POST',
+  });
+}
+
+export async function deleteHistoryItem(historyId: string): Promise<{ status: string; id: string }> {
+  return apiFetch<{ status: string; id: string }>(`/history/${encodeURIComponent(historyId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function clearAllHistory(filters?: { user?: string; workspace?: string }): Promise<{ status: string; deleted_count: number }> {
+  const params = new URLSearchParams();
+  if (filters?.user) params.set('user', filters.user);
+  if (filters?.workspace) params.set('workspace', filters.workspace);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<{ status: string; deleted_count: number }>(`/history${qs}`, {
+    method: 'DELETE',
+  });
 }

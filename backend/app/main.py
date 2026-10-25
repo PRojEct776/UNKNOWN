@@ -586,57 +586,40 @@ async def upload_batch_documents(files: list[UploadFile] = File(...)):
 
 
 @app.delete("/documents/{document_name}")
-def delete_document(document_name: str):
-    """Delete a research paper and remove it from the retrieval index."""
+def delete_document(document_name: str, undo_window: float = 10.0):
+    """Soft-delete a document with a 10-second undo window, removing chunks and indexes."""
+    from app.services.document_service import soft_delete_document
+
     safe_name = Path(document_name).name
-    paper_path = settings.PAPERS_DIR / safe_name
-
-    if not paper_path.exists() or not paper_path.is_file():
-        raise HTTPException(
-            status_code=404, detail=f"Document '{safe_name}' not found"
-        )
-
     try:
-        # 1. Remove original paper file
-        paper_path.unlink(missing_ok=True)
-
-        # 2. Remove extracted JSON
-        json_path = settings.JSON_DIR / f"{paper_path.stem}.json"
-        json_path.unlink(missing_ok=True)
-
-        # 3. Remove metadata report
-        metadata_path = settings.BASE_DIR / "app" / "data" / "metadata" / f"{paper_path.stem}_metadata.json"
-        metadata_path.unlink(missing_ok=True)
-
-        # 4. Re-chunk remaining documents
-        from app.rag.chunker import DocumentChunker
-        from app.rag.bm25_index_builder import BM25IndexBuilder
-        from app.rag.faiss_index_builder import FAISSIndexBuilder
-
-        chunker = DocumentChunker()
-        all_chunks = chunker.create_chunks()
-
-        # 5. Re-build BM25 & FAISS indexes
-        bm25_builder = BM25IndexBuilder()
-        bm25_builder.build_index()
-
-        faiss_builder = FAISSIndexBuilder()
-        faiss_builder.build_index()
-
-        # 6. Reload in-memory indexes
-        rag_service.reload_indexes()
-
-        return {
-            "status": "deleted",
-            "document_name": safe_name,
-            "remaining_chunks": len(all_chunks),
-            "message": f"Successfully deleted {safe_name} and rebuilt retrieval indexes.",
-        }
+        result = soft_delete_document(safe_name, undo_window_seconds=undo_window)
+        return result
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Failed to delete document: %s", safe_name)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete document: {exc}",
+        ) from exc
+
+
+@app.post("/documents/{document_name}/undo")
+def undo_delete_document_endpoint(document_name: str):
+    """Restore a soft-deleted document within the undo window."""
+    from app.services.document_service import undo_delete_document
+
+    safe_name = Path(document_name).name
+    try:
+        result = undo_delete_document(safe_name)
+        return result
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to restore document: %s", safe_name)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to restore document: {exc}",
         ) from exc
 
 
@@ -726,6 +709,20 @@ def query(request: QueryRequest):
     )
 
     logger.info(f"Request completed in {elapsed_ms} ms")
+
+    try:
+        from app.services.history_service import create_history_entry
+        create_history_entry(
+            user=active_user,
+            workspace=active_user,
+            document_ids=doc_filter or [],
+            scope="document" if doc_filter else "collection",
+            query=request.query,
+            feature="query",
+            result_snapshot=response.model_dump() if hasattr(response, "model_dump") else response.dict(),
+        )
+    except Exception:
+        logger.exception("Failed to record query history")
 
     return response
 
@@ -1502,34 +1499,9 @@ if (_FRONTEND_DIST_DIR / "assets").exists():
     )
 
 
-@app.get("/", include_in_schema=False)
-async def serve_root():
-    """Serve the frontend SPA directly on the root URL."""
-    index_file = _FRONTEND_DIST_DIR / "index.html"
-    if index_file.is_file():
-        return FileResponse(str(index_file))
-    return {
-        "status": "healthy",
-        "service": "UNKNOWN AI",
-        "version": "1.0.0",
-    }
 
 
-@app.get("/{full_path:path}", include_in_schema=False)
-async def serve_spa_fallback(full_path: str):
-    """Client-side routing fallback for the single-page application."""
-    if full_path.startswith("api/") or full_path in ("docs", "redoc", "openapi.json"):
-        raise HTTPException(status_code=404, detail="Not Found")
 
-    target_file = _FRONTEND_DIST_DIR / full_path
-    if target_file.is_file():
-        return FileResponse(str(target_file))
-
-    index_file = _FRONTEND_DIST_DIR / "index.html"
-    if index_file.is_file():
-        return FileResponse(str(index_file))
-
-    raise HTTPException(status_code=404, detail="Not Found")
 
 
 @app.post(
@@ -1568,3 +1540,131 @@ def query_assistant(
             status_code=500,
             detail=f"Query Assistant failed: {error}",
         ) from error
+
+
+
+# ============================================================
+# HISTORY ENDPOINTS
+# ============================================================
+
+
+@app.get("/history")
+def list_history(
+    user: str | None = None,
+    workspace: str | None = None,
+    feature: str | None = None,
+    document_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """List and filter execution history records."""
+    from app.services.history_service import list_history_entries
+    return list_history_entries(
+        user=user,
+        workspace=workspace,
+        feature=feature,
+        document_id=document_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@app.get("/history/{history_id}")
+def get_history_item(history_id: str):
+    """Open and retrieve a single history record."""
+    from app.services.history_service import get_history_entry
+    item = get_history_entry(history_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"History record '{history_id}' not found.")
+    return item
+
+
+@app.post("/history/{history_id}/rerun")
+def rerun_history_item(history_id: str):
+    """Rerun an existing history query and record the updated result."""
+    from app.services.history_service import get_history_entry, create_history_entry
+    item = get_history_entry(history_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"History record '{history_id}' not found.")
+
+    query = item["query"]
+    feature = item["feature"]
+    doc_ids = item["document_ids"]
+
+    try:
+        if feature == "knowledge-dna":
+            report = rag_service.generate_knowledge_dna(topic=query, document_names=doc_ids or None)
+            snapshot = report.model_dump() if hasattr(report, "model_dump") else report.dict()
+        elif feature == "knowledge-mind-map":
+            report = rag_service.generate_knowledge_mind_map(topic=query, document_names=doc_ids or None)
+            snapshot = report.model_dump() if hasattr(report, "model_dump") else report.dict()
+        elif feature == "reason":
+            snapshot = rag_service.reason(query, document_names=doc_ids or None)
+        else:
+            resp = rag_service.query(query, document_names=doc_ids or None)
+            snapshot = resp.model_dump() if hasattr(resp, "model_dump") else resp.dict() if hasattr(resp, "dict") else resp
+
+        new_record = create_history_entry(
+            user=item["user"],
+            workspace=item["workspace"],
+            document_ids=doc_ids,
+            scope=item["scope"],
+            query=query,
+            feature=feature,
+            result_snapshot=snapshot,
+        )
+        return new_record
+    except Exception as exc:
+        logger.exception("Failed to rerun history item: %s", history_id)
+        raise HTTPException(status_code=500, detail=f"Failed to rerun query: {exc}") from exc
+
+
+@app.delete("/history/{history_id}")
+def delete_single_history(history_id: str):
+    """Delete a single history record."""
+    from app.services.history_service import delete_history_entry
+    success = delete_history_entry(history_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"History record '{history_id}' not found.")
+    return {"status": "deleted", "id": history_id}
+
+
+@app.delete("/history")
+def clear_history(
+    user: str | None = None,
+    workspace: str | None = None,
+):
+    """Clear all history records or filtered by user/workspace."""
+    from app.services.history_service import clear_history_entries
+    count = clear_history_entries(user=user, workspace=workspace)
+    return {"status": "cleared", "deleted_count": count}
+
+
+@app.get("/", include_in_schema=False)
+async def serve_root():
+    """Serve the frontend SPA directly on the root URL."""
+    index_file = _FRONTEND_DIST_DIR / "index.html"
+    if index_file.is_file():
+        return FileResponse(str(index_file))
+    return {
+        "status": "healthy",
+        "service": "UNKNOWN AI",
+        "version": "1.0.0",
+    }
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa_fallback(full_path: str):
+    """Client-side routing fallback for the single-page application."""
+    if full_path.startswith("api/") or full_path in ("docs", "redoc", "openapi.json"):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    target_file = _FRONTEND_DIST_DIR / full_path
+    if target_file.is_file():
+        return FileResponse(str(target_file))
+
+    index_file = _FRONTEND_DIST_DIR / "index.html"
+    if index_file.is_file():
+        return FileResponse(str(index_file))
+
+    raise HTTPException(status_code=404, detail="Not Found")

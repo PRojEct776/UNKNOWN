@@ -244,4 +244,6 @@ logs/
 # OS temporary files
 .DS_Store
 Thumbs.db
-desktop.ini
+desktop.inibackend/app/data/history.db
+backend/app/data/trash/
+backend/app/data/history.db

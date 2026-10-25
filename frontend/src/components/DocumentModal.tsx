@@ -13,11 +13,13 @@ import {
   ExternalLink,
   Eye,
   Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import {
   fetchDocuments,
   uploadDocumentsBatch,
   deleteDocument,
+  undoDeleteDocument,
   getDocumentDownloadUrl,
   type BackendDocument,
 } from '../lib/api';
@@ -39,6 +41,9 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingDocName, setDeletingDocName] = useState<string | null>(null);
+  const [confirmDocName, setConfirmDocName] = useState<string | null>(null);
+  const [undoToast, setUndoToast] = useState<{ docName: string; secondsLeft: number } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -115,23 +120,48 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
     }
   };
 
-  const handleDelete = async (docName: string) => {
-    if (!window.confirm(`Are you sure you want to delete "${docName}" from the corpus?`)) {
-      return;
-    }
-
+  const handleConfirmDelete = async () => {
+    if (!confirmDocName) return;
+    const docName = confirmDocName;
+    setConfirmDocName(null);
     setDeletingDocName(docName);
     setErrorMessage(null);
     try {
       await deleteDocument(docName);
-      setUploadStatus(`Deleted "${docName}" and re-indexed corpus.`);
+      setUploadStatus(`Moved "${docName}" to trash. Undo available for 10 seconds.`);
       await loadDocs();
+
+      if (undoTimerRef.current) clearInterval(undoTimerRef.current);
+      setUndoToast({ docName, secondsLeft: 10 });
+      undoTimerRef.current = setInterval(() => {
+        setUndoToast((prev) => {
+          if (!prev || prev.secondsLeft <= 1) {
+            if (undoTimerRef.current) clearInterval(undoTimerRef.current);
+            return null;
+          }
+          return { ...prev, secondsLeft: prev.secondsLeft - 1 };
+        });
+      }, 1000);
     } catch (err: unknown) {
       setErrorMessage(
         err instanceof Error ? err.message : `Failed to delete ${docName}`,
       );
     } finally {
       setDeletingDocName(null);
+    }
+  };
+
+  const handleUndoDelete = async (docName: string) => {
+    if (undoTimerRef.current) clearInterval(undoTimerRef.current);
+    setUndoToast(null);
+    try {
+      await undoDeleteDocument(docName);
+      setUploadStatus(`Restored "${docName}" and rebuilt indexes.`);
+      await loadDocs();
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error ? err.message : `Failed to restore ${docName}`,
+      );
     }
   };
 
@@ -157,6 +187,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
   };
 
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
@@ -371,7 +402,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
 
                             <button
                               type="button"
-                              onClick={() => void handleDelete(doc.name)}
+                              onClick={() => setConfirmDocName(doc.name)}
                               disabled={isDeleting}
                               className="inline-flex items-center gap-1 rounded-lg border border-rose-500/20 bg-rose-500/10 p-1.5 text-xs text-rose-400 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer"
                               title={`Delete ${doc.name}`}
@@ -405,5 +436,68 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
         </div>
       )}
     </AnimatePresence>
+
+      {confirmDocName && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-rose-500/30 bg-[#0f171e] p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400 mb-3">
+              <Trash2 className="h-6 w-6" />
+              <h3 className="text-lg font-bold text-white">Confirm Deletion</h3>
+            </div>
+            <p className="text-sm text-[#f3faf0]/80 mb-6 leading-relaxed">
+              Are you sure you want to delete <strong className="text-white font-mono">{confirmDocName}</strong>?
+              This removes its chunks, FAISS vectors, and derived artifacts with a 10-second undo window.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmDocName(null)}
+                className="px-4 py-2 rounded-lg bg-[#1a252d] text-sm text-[#f3faf0]/80 hover:bg-[#253540] hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmDelete()}
+                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-sm font-semibold text-white shadow-lg transition-colors cursor-pointer"
+              >
+                Delete Document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {undoToast && (
+        <div className="fixed bottom-6 right-6 z-[70] flex items-center gap-3 rounded-xl border border-[#a7d0d2]/40 bg-[#0c131a] px-5 py-3.5 shadow-2xl backdrop-blur-md">
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold text-white">
+              Staged <span className="font-mono text-[#a7d0d2]">{undoToast.docName}</span> for deletion
+            </span>
+            <span className="text-xs text-[#f3faf0]/60">
+              Undo available: {undoToast.secondsLeft}s remaining
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleUndoDelete(undoToast.docName)}
+            className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-[#a7d0d2] px-3 py-1.5 text-xs font-bold text-[#0b1219] hover:bg-white shadow transition-colors cursor-pointer"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            <span>Undo</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (undoTimerRef.current) clearInterval(undoTimerRef.current);
+              setUndoToast(null);
+            }}
+            className="text-white/40 hover:text-white text-xs ml-1 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </>
   );
 };

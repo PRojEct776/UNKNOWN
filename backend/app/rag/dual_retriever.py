@@ -407,23 +407,83 @@ def _build_comparison(
     doc_quote = _extract_verbatim_quote(doc_text)
     web_quote = _extract_verbatim_quote(web_text)
 
-    label, entail, contra = classify_nli_pair(
-        premise=doc_text,
-        hypothesis=web_text,
-        nli_fn=nli_fn,
-    )
+    # Sentence-level alignment: check each doc sentence against web sentences
+    doc_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", doc_text.strip()) if s.strip()]
+    web_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", web_text.strip()) if s.strip()]
+
+    best_entail = 0.0
+    best_contra = 0.0
+    best_agree_doc = doc_quote
+    best_agree_web = web_quote
+    best_contra_doc = doc_quote
+    best_contra_web = web_quote
+
+    for ds in (doc_sentences or [doc_text]):
+        for ws in (web_sentences or [web_text]):
+            _, entail, contra = classify_nli_pair(
+                premise=ws,
+                hypothesis=ds,
+                nli_fn=nli_fn,
+            )
+            _, entail_rev, contra_rev = classify_nli_pair(
+                premise=ds,
+                hypothesis=ws,
+                nli_fn=nli_fn,
+            )
+            eff_contra = max(contra, contra_rev)
+            eff_entail = max(entail, entail_rev)
+
+            if eff_entail >= DUAL_NLI_ENTAIL_THRESHOLD and eff_entail > best_entail:
+                best_entail = eff_entail
+                best_agree_doc = ds
+                best_agree_web = ws
+            if eff_contra >= DUAL_NLI_CONTRA_THRESHOLD and eff_contra > best_contra:
+                best_contra = eff_contra
+                best_contra_doc = ds
+                best_contra_web = ws
+
+    if best_entail >= DUAL_NLI_ENTAIL_THRESHOLD:
+        best_label = "agree"
+        best_doc_quote = best_agree_doc
+        best_web_quote = best_agree_web
+    elif best_contra >= DUAL_NLI_CONTRA_THRESHOLD:
+        best_label = "disagree"
+        best_doc_quote = best_contra_doc
+        best_web_quote = best_contra_web
+    else:
+        _, p_entail, p_contra = classify_nli_pair(
+            premise=web_text,
+            hypothesis=doc_text,
+            nli_fn=nli_fn,
+        )
+        if p_entail >= DUAL_NLI_ENTAIL_THRESHOLD:
+            best_label = "agree"
+            best_entail = p_entail
+            best_contra = p_contra
+            best_doc_quote = doc_quote
+            best_web_quote = web_quote
+        elif p_contra >= DUAL_NLI_CONTRA_THRESHOLD:
+            best_label = "disagree"
+            best_contra = p_contra
+            best_entail = p_entail
+            best_doc_quote = doc_quote
+            best_web_quote = web_quote
+        else:
+            best_label = "not_addressed"
+            best_doc_quote = doc_quote
+            best_web_quote = web_quote
 
     web_source = web_url or web_chunks[0].get("title", "Unknown web source")
 
     return ComparisonPair(
         sub_question=sub_question,
-        label=label,
-        doc_quote=doc_quote,
-        web_quote=web_quote,
+        label=best_label,
+        doc_quote=best_doc_quote,
+        web_quote=best_web_quote,
         doc_source=doc_citation,
         web_source=web_source,
-        nli_entail=entail,
-        nli_contra=contra,
+        nli_entail=best_entail,
+        nli_contra=best_contra,
     )
 
 

@@ -82,8 +82,8 @@ class Settings:
     )
 
     GEMINI_MODEL: str = os.getenv(
-        "MODEL_NAME",
-        "gemini-3.5-flash-lite",
+        "GEMINI_MODEL",
+        os.getenv("MODEL_NAME", "gemini-2.5-flash"),
     )
 
     # Provider timeout (milliseconds)

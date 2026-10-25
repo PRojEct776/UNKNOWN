@@ -414,3 +414,198 @@ def ingest_document(file_path: Path, user_id: str = "default_user") -> dict:
                 except Exception:
                     pass
         raise
+
+
+# ==========================================================
+# Deletion and Undo Management
+# ==========================================================
+import threading
+TRASH_DIR = settings.BASE_DIR / "app" / "data" / "trash"
+_deletion_timers: dict[str, threading.Timer] = {}
+_deletion_lock = threading.Lock()
+
+
+def rebuild_retrieval_indexes() -> int:
+    from app.rag.bm25_index_builder import BM25IndexBuilder
+    from app.rag.chunker import DocumentChunker
+    from app.rag.faiss_index_builder import FAISSIndexBuilder
+    from app.main import rag_service
+
+    chunker = DocumentChunker()
+    all_chunks = chunker.create_chunks()
+
+    bm25_builder = BM25IndexBuilder()
+    bm25_builder.build_index()
+
+    faiss_builder = FAISSIndexBuilder()
+    faiss_builder.build_index()
+
+    rag_service.reload_indexes()
+    return len(all_chunks)
+
+
+def purge_derived_artifacts(document_name: str) -> int:
+    from app.services.history_service import delete_history_for_document
+
+    safe_name = Path(document_name).name
+    stem = Path(safe_name).stem
+    deleted_count = 0
+
+    cache_dir = settings.BASE_DIR / "app" / "data" / "cache"
+    if cache_dir.exists():
+        for p in list(cache_dir.rglob("*")):
+            if p.is_file() and (stem in p.name or safe_name in p.name):
+                try:
+                    p.unlink()
+                    deleted_count += 1
+                except Exception:
+                    pass
+
+    delete_history_for_document(safe_name)
+    return deleted_count
+
+
+def soft_delete_document(document_name: str, undo_window_seconds: float = 10.0) -> dict:
+    safe_name = Path(document_name).name
+    stem = Path(safe_name).stem
+    paper_path = settings.PAPERS_DIR / safe_name
+    json_path = settings.JSON_DIR / f"{stem}.json"
+    meta_path = METADATA_DIR / f"{stem}_metadata.json"
+
+    doc_trash = TRASH_DIR / safe_name
+    if not paper_path.exists() and not json_path.exists() and not doc_trash.exists():
+        raise FileNotFoundError(f"Document '{safe_name}' not found.")
+
+    with _deletion_lock:
+        existing_timer = _deletion_timers.pop(safe_name, None)
+        if existing_timer:
+            existing_timer.cancel()
+
+    if doc_trash.exists():
+        shutil.rmtree(doc_trash, ignore_errors=True)
+    doc_trash.mkdir(parents=True, exist_ok=True)
+
+    if paper_path.exists():
+        shutil.move(str(paper_path), str(doc_trash / safe_name))
+    if json_path.exists():
+        shutil.move(str(json_path), str(doc_trash / f"{stem}.json"))
+    if meta_path.exists():
+        shutil.move(str(meta_path), str(doc_trash / f"{stem}_metadata.json"))
+
+    cache_dir = settings.BASE_DIR / "app" / "data" / "cache"
+    if cache_dir.exists():
+        trash_cache = doc_trash / "cache"
+        trash_cache.mkdir(parents=True, exist_ok=True)
+        for p in list(cache_dir.rglob("*")):
+            if p.is_file() and (stem in p.name or safe_name in p.name):
+                try:
+                    shutil.move(str(p), str(trash_cache / p.name))
+                except Exception:
+                    pass
+
+    remaining_chunks = rebuild_retrieval_indexes()
+
+    if undo_window_seconds > 0:
+        timer = threading.Timer(
+            undo_window_seconds,
+            hard_delete_document,
+            args=[safe_name],
+        )
+        timer.daemon = True
+        with _deletion_lock:
+            _deletion_timers[safe_name] = timer
+        timer.start()
+    else:
+        hard_delete_document(safe_name)
+
+    return {
+        "status": "soft_deleted",
+        "document_name": safe_name,
+        "undo_window_seconds": undo_window_seconds,
+        "remaining_chunks": remaining_chunks,
+        "message": f"Successfully scheduled deletion of {safe_name}. Undo available for {undo_window_seconds:.0f} seconds.",
+    }
+
+
+def undo_delete_document(document_name: str) -> dict:
+    safe_name = Path(document_name).name
+    stem = Path(safe_name).stem
+    doc_trash = TRASH_DIR / safe_name
+
+    with _deletion_lock:
+        timer = _deletion_timers.pop(safe_name, None)
+        if timer:
+            timer.cancel()
+
+    if not doc_trash.exists():
+        raise FileNotFoundError(f"No pending deletion found for '{safe_name}'.")
+
+    trashed_paper = doc_trash / safe_name
+    if trashed_paper.exists():
+        shutil.move(str(trashed_paper), str(settings.PAPERS_DIR / safe_name))
+
+    trashed_json = doc_trash / f"{stem}.json"
+    if trashed_json.exists():
+        shutil.move(str(trashed_json), str(settings.JSON_DIR / f"{stem}.json"))
+
+    trashed_meta = doc_trash / f"{stem}_metadata.json"
+    if trashed_meta.exists():
+        shutil.move(str(trashed_meta), str(METADATA_DIR / f"{stem}_metadata.json"))
+
+    trashed_cache = doc_trash / "cache"
+    if trashed_cache.exists():
+        cache_dir = settings.BASE_DIR / "app" / "data" / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for p in trashed_cache.glob("*"):
+            if p.is_file():
+                try:
+                    shutil.move(str(p), str(cache_dir / p.name))
+                except Exception:
+                    pass
+
+    shutil.rmtree(doc_trash, ignore_errors=True)
+    if TRASH_DIR.exists() and not any(TRASH_DIR.iterdir()):
+        try:
+            TRASH_DIR.rmdir()
+        except Exception:
+            pass
+
+    total_chunks = rebuild_retrieval_indexes()
+
+    return {
+        "status": "restored",
+        "document_name": safe_name,
+        "total_chunks": total_chunks,
+        "message": f"Document '{safe_name}' successfully restored.",
+    }
+
+
+def hard_delete_document(document_name: str) -> dict:
+    safe_name = Path(document_name).name
+    stem = Path(safe_name).stem
+
+    with _deletion_lock:
+        timer = _deletion_timers.pop(safe_name, None)
+        if timer:
+            timer.cancel()
+
+    doc_trash = TRASH_DIR / safe_name
+    if doc_trash.exists():
+        shutil.rmtree(doc_trash, ignore_errors=True)
+    if TRASH_DIR.exists() and not any(TRASH_DIR.iterdir()):
+        try:
+            TRASH_DIR.rmdir()
+        except Exception:
+            pass
+
+    (settings.PAPERS_DIR / safe_name).unlink(missing_ok=True)
+    (settings.JSON_DIR / f"{stem}.json").unlink(missing_ok=True)
+    (METADATA_DIR / f"{stem}_metadata.json").unlink(missing_ok=True)
+
+    purge_derived_artifacts(safe_name)
+
+    return {
+        "status": "hard_deleted",
+        "document_name": safe_name,
+        "message": f"Document '{safe_name}' permanently deleted.",
+    }

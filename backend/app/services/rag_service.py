@@ -62,6 +62,7 @@ from app.rag.concept_discovery import ConceptDiscoveryEngine
 from app.rag.context_builder import ContextBuilder
 from app.rag.contradiction_finder import ContradictionFinder
 from app.rag.debate_engine import DebateEngine
+from app.rag.confidence import build_sources, compute_confidence
 from app.rag.evidence import build_evidence
 from app.rag.hybrid_search import HybridSearch
 from app.rag.knowledge_dna import KnowledgeDNA
@@ -189,7 +190,7 @@ class RAGService:
         all_raw = list(result.doc_sources) + [
             web_chunk_to_source_dict(c) for c in result.web_sources
         ]
-        sources = self._build_sources(all_raw)
+        sources = build_sources(all_raw)
 
         # Convert ComparisonPair dataclasses to schema objects
         comparison_schema = [
@@ -291,11 +292,7 @@ class RAGService:
 
     # ======================================================
 
-    @staticmethod
-    def _build_sources(results) -> list[Source]:
-        """Convert retrieval results into canonical API Source objects."""
-        from app.rag.confidence import build_sources
-        return build_sources(results)
+
 
     # ======================================================
 
@@ -419,7 +416,7 @@ class RAGService:
                         sources=[],
                     )
 
-                sources = self._build_sources(reasoning_result.get("sources", []))
+                sources = build_sources(reasoning_result.get("sources", []))
 
                 return QueryResponse(
                     query=normalized_query,
@@ -560,7 +557,7 @@ class RAGService:
                 for s in verified_sentences
             ]
 
-        sources = self._build_sources(results)
+        sources = build_sources(results)
         logger.info("Grounded pipeline completed with %d verified sentences, %d claims.", len(verified_sentences), len(claims))
 
         return QueryResponse(
@@ -723,7 +720,7 @@ class RAGService:
 
         # ==================================================
 
-        sources = self._build_sources(results)
+        sources = build_sources(results)
 
         logger.info("Claim verification completed: " f"{verification.verdict.value}")
 
