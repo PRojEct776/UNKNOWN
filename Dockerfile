@@ -43,8 +43,9 @@ COPY scripts/ /app/scripts/
 COPY backend/scripts/ /app/backend/scripts/
 RUN python scripts/download_models.py
 
-# Copy backend application source and datasets
+# Copy backend application source, static assets, and datasets
 COPY backend/app /app/backend/app
+COPY backend/app/assets /app/backend/app/assets
 COPY backend/datasets /app/backend/datasets
 COPY backend/vector_store /app/backend/vector_store
 COPY backend/pytest.ini /app/backend/pytest.ini

@@ -53,29 +53,49 @@ _HINDI_FONT = "Helvetica"
 
 
 def _register_unicode_fonts() -> tuple[str, str]:
-    """Register system or fallback Unicode fonts for Greek and Hindi."""
+    """Register bundled open-licence Unicode fonts for Greek and Hindi."""
     global _FONTS_REGISTERED, _GREEK_FONT, _HINDI_FONT
     if _FONTS_REGISTERED:
         return _GREEK_FONT, _HINDI_FONT
 
-    # Look for Windows system fonts
-    font_candidates = [
-        ("Nirmala", "C:\\Windows\\Fonts\\Nirmala.ttc", "hindi"),
-        ("SegoeUI", "C:\\Windows\\Fonts\\segoeui.ttf", "greek"),
-        ("Arial", "C:\\Windows\\Fonts\\arial.ttf", "both"),
-        ("Mangal", "C:\\Windows\\Fonts\\mangal.ttf", "hindi"),
-    ]
+    # 1. Bundled open-licence fonts relative to this file (cross-platform / CI)
+    fonts_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+    noto_sans_path = fonts_dir / "NotoSans-Regular.ttf"
+    noto_devanagari_path = fonts_dir / "NotoSansDevanagari-Regular.ttf"
 
-    for name, path, target in font_candidates:
-        if os.path.exists(path):
-            try:
-                pdfmetrics.registerFont(TTFont(name, path))
-                if target in ("hindi", "both") and _HINDI_FONT == "Helvetica":
-                    _HINDI_FONT = name
-                if target in ("greek", "both") and _GREEK_FONT == "Helvetica":
-                    _GREEK_FONT = name
-            except Exception as exc:
-                logger.debug("Could not register font %s: %s", name, exc)
+    if noto_sans_path.is_file():
+        try:
+            pdfmetrics.registerFont(TTFont("NotoSans", str(noto_sans_path)))
+            _GREEK_FONT = "NotoSans"
+        except Exception as exc:
+            logger.debug("Could not register bundled NotoSans font: %s", exc)
+
+    if noto_devanagari_path.is_file():
+        try:
+            pdfmetrics.registerFont(TTFont("NotoSansDevanagari", str(noto_devanagari_path)))
+            _HINDI_FONT = "NotoSansDevanagari"
+        except Exception as exc:
+            logger.debug("Could not register bundled NotoSansDevanagari font: %s", exc)
+
+    # 2. Fallback to system fonts if bundled fonts were not found or failed
+    if _GREEK_FONT == "Helvetica" or _HINDI_FONT == "Helvetica":
+        font_candidates = [
+            ("Nirmala", "C:\\Windows\\Fonts\\Nirmala.ttc", "hindi"),
+            ("SegoeUI", "C:\\Windows\\Fonts\\segoeui.ttf", "greek"),
+            ("Arial", "C:\\Windows\\Fonts\\arial.ttf", "both"),
+            ("Mangal", "C:\\Windows\\Fonts\\mangal.ttf", "hindi"),
+        ]
+
+        for name, path, target in font_candidates:
+            if os.path.exists(path):
+                try:
+                    pdfmetrics.registerFont(TTFont(name, path))
+                    if target in ("hindi", "both") and _HINDI_FONT == "Helvetica":
+                        _HINDI_FONT = name
+                    if target in ("greek", "both") and _GREEK_FONT == "Helvetica":
+                        _GREEK_FONT = name
+                except Exception as exc:
+                    logger.debug("Could not register font %s: %s", name, exc)
 
     if _HINDI_FONT == "Helvetica" and _GREEK_FONT != "Helvetica":
         _HINDI_FONT = _GREEK_FONT

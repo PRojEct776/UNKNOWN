@@ -10,6 +10,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY app/assets ./app/assets
 COPY datasets ./datasets
 COPY vector_store ./vector_store
 
