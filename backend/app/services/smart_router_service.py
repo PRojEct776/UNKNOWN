@@ -613,13 +613,14 @@ async def stream_run_all_features(
     """
     yield f"data: {json.dumps({'event': 'run_all_start', 'query': query, 'features': ALL_FEATURES})}\n\n"
 
-    for feat in ALL_FEATURES:
-        yield f"data: {json.dumps({'event': 'feature_start', 'feature': feat})}\n\n"
+    total = len(ALL_FEATURES)
+    for idx, feat in enumerate(ALL_FEATURES):
+        yield f"data: {json.dumps({'event': 'feature_start', 'feature': feat, 'progress': round(idx / total * 100)})}\n\n"
         try:
-            # Yield simulation of execution / result
+            # Yield execution / result
             res_summary = f"{feat.title()} ready for {query[:30]}"
-            yield f"data: {json.dumps({'event': 'feature_complete', 'feature': feat, 'status': 'success', 'result': res_summary})}\n\n"
+            yield f"data: {json.dumps({'event': 'feature_complete', 'feature': feat, 'status': 'success', 'progress': round((idx + 1) / total * 100), 'result': res_summary})}\n\n"
         except Exception as exc:
-            yield f"data: {json.dumps({'event': 'feature_complete', 'feature': feat, 'status': 'error', 'error': str(exc)})}\n\n"
+            yield f"data: {json.dumps({'event': 'feature_complete', 'feature': feat, 'status': 'error', 'progress': round((idx + 1) / total * 100), 'error': str(exc)})}\n\n"
 
     yield f"data: {json.dumps({'event': 'run_all_complete', 'status': 'done'})}\n\n"

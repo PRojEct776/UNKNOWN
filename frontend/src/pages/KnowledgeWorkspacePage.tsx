@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { SearchSidebar } from '../components/SearchSidebar';
 import { QueryInput } from '../components/search/QueryInput';
+import { SmartQueryBar } from '../components/query/SmartQueryBar';
 import { SearchModeSelector } from '../components/search/SearchModeSelector';
 import { AnswerPanel } from '../components/answers/AnswerPanel';
 import { EvidencePanel } from '../components/evidence/EvidencePanel';
@@ -1223,6 +1224,17 @@ export const KnowledgeWorkspacePage: React.FC = () => {
                   Reset Scope to All Papers ({corpusDocuments.length})
                 </button>
               )}
+            </div>
+
+            {/* One-Button Smart Query Bar (Task P2-4) */}
+            <div className="mb-3">
+              <SmartQueryBar
+                initialQuery={query}
+                selectedDocuments={Array.from(selectedDocNames)}
+                onResultReceived={(res) => {
+                  if (res.rewritten_query) setQuery(res.rewritten_query);
+                }}
+              />
             </div>
 
             <QueryInput

@@ -950,3 +950,98 @@ export async function compareDocumentDNA(
     body: JSON.stringify({ document_a: docA, document_b: docB }),
   });
 }
+
+
+// ---------------------------------------------------------------------------
+// Smart Query & Autocomplete APIs (Task P1-5 & P2-4)
+// ---------------------------------------------------------------------------
+
+export interface SmartQueryPayload {
+  text: string;
+  document_ids?: string[];
+  run_all?: boolean;
+  stream?: boolean;
+}
+
+export interface SmartQueryResponseData {
+  original_query: string;
+  rewritten_query: string;
+  matched_documents: string[];
+  detected_feature?: string | null;
+  executed_feature?: string | null;
+  run_all: boolean;
+  is_ambiguous: boolean;
+  clarification_options: string[];
+  result?: unknown;
+}
+
+export interface AutocompleteResult {
+  query: string;
+  document_suggestions: string[];
+  feature_suggestions: string[];
+  combined_suggestions: string[];
+}
+
+export interface SmartQueryStreamEvent {
+  event?: string;
+  feature?: string;
+  status?: string;
+  progress?: number;
+  message?: string;
+  result?: unknown;
+}
+
+export async function postSmartQuery(payload: SmartQueryPayload): Promise<SmartQueryResponseData> {
+  return apiFetch<SmartQueryResponseData>('/smart-query', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchSmartQueryAutocomplete(query: string): Promise<AutocompleteResult> {
+  return apiFetch<AutocompleteResult>(
+    '/smart-query/autocomplete?q=' + encodeURIComponent(query),
+  );
+}
+
+export async function streamSmartQuery(
+  payload: SmartQueryPayload,
+  onEvent: (event: SmartQueryStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const response = await fetch(backendUrl + '/smart-query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, stream: true }),
+    signal,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error('Smart query stream failed: ' + response.statusText);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('data: ')) {
+        try {
+          const parsed = JSON.parse(trimmed.slice(6));
+          onEvent(parsed);
+        } catch {
+          // ignore malformed chunks
+        }
+      }
+    }
+  }
+}
