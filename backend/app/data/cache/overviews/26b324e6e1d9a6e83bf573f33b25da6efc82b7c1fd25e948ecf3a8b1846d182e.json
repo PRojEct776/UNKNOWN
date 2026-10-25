@@ -1,0 +1,122 @@
+{
+  "document_name": "Microbial_DNA_Storage_IEEE.pdf",
+  "document_hash": "26b324e6e1d9a6e83bf573f33b25da6efc82b7c1fd25e948ecf3a8b1846d182e",
+  "title": "Microbial_DNA_Storage_IEEE",
+  "authors": [],
+  "year": null,
+  "page_count": 5,
+  "language": "en",
+  "figure_count": 2,
+  "table_count": 1,
+  "figures": [
+    {
+      "id": "fig_1",
+      "label": "Figure 1",
+      "caption": "Visual Architecture / Experimental Workflow 1",
+      "page": 1,
+      "thumbnail": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" height=\"100\" viewBox=\"0 0 160 100\"><rect width=\"160\" height=\"100\" fill=\"%23141d26\" rx=\"8\" stroke=\"%23d2434e\" stroke-width=\"1.5\"/><path d=\"M20 70 L50 40 L80 65 L110 30 L140 70\" fill=\"none\" stroke=\"%23d2434e\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"110\" cy=\"30\" r=\"3\" fill=\"%23d2434e\"/><text x=\"80\" y=\"88\" fill=\"%23f3faf0\" font-family=\"sans-serif\" font-size=\"10\" font-weight=\"bold\" text-anchor=\"middle\">Figure%201</text></svg>"
+    },
+    {
+      "id": "fig_2",
+      "label": "Figure 2",
+      "caption": "Visual Architecture / Experimental Workflow 2",
+      "page": 2,
+      "thumbnail": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" height=\"100\" viewBox=\"0 0 160 100\"><rect width=\"160\" height=\"100\" fill=\"%23141d26\" rx=\"8\" stroke=\"%23d2434e\" stroke-width=\"1.5\"/><path d=\"M20 70 L50 40 L80 65 L110 30 L140 70\" fill=\"none\" stroke=\"%23d2434e\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"110\" cy=\"30\" r=\"3\" fill=\"%23d2434e\"/><text x=\"80\" y=\"88\" fill=\"%23f3faf0\" font-family=\"sans-serif\" font-size=\"10\" font-weight=\"bold\" text-anchor=\"middle\">Figure%202</text></svg>"
+    }
+  ],
+  "tables": [
+    {
+      "id": "tbl_1",
+      "label": "Table 1",
+      "caption": "Benchmark Performance / Quantitative Data 1",
+      "page": 1,
+      "thumbnail": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" height=\"100\" viewBox=\"0 0 160 100\"><rect width=\"160\" height=\"100\" fill=\"%23141d26\" rx=\"8\" stroke=\"%23a7d0d2\" stroke-width=\"1.5\"/><path d=\"M20 70 L50 40 L80 65 L110 30 L140 70\" fill=\"none\" stroke=\"%23a7d0d2\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"110\" cy=\"30\" r=\"3\" fill=\"%23a7d0d2\"/><text x=\"80\" y=\"88\" fill=\"%23f3faf0\" font-family=\"sans-serif\" font-size=\"10\" font-weight=\"bold\" text-anchor=\"middle\">Table%201</text></svg>"
+    }
+  ],
+  "summary_sentences": [
+    {
+      "text": "Digital information can be stored inside living microbes, where cell division allows the encoded sequences to be replicated.",
+      "source_ids": [
+        1
+      ],
+      "quote": "Once an encoded sequence is introduced into a microbial genome, cell division can produce further copies.",
+      "page_ref": "Page 1"
+    },
+    {
+      "text": "A population model simulation was developed to evaluate how data recovery is affected by mutation, genetic drift, selection, and sampling.",
+      "source_ids": [
+        2
+      ],
+      "quote": "The simulation shows how microbial data storage can be studied as a recovery problem shaped by mutation, drift, selection, and sampling.",
+      "page_ref": "Page 5"
+    },
+    {
+      "text": "The findings indicate that storing extra copies enhances data recovery for neutral payloads, but provides much less benefit if damaged variants hold a growth advantage.",
+      "source_ids": [
+        1
+      ],
+      "quote": "Extra copies improve recovery when the payload is neutral, but their benefit is much smaller when damaged variants have a growth advantage.",
+      "page_ref": "Page 1"
+    },
+    {
+      "text": "Although increasing sequencing coverage can lower sampling uncertainty, it is incapable of restoring sequences that have already been lost from the population.",
+      "source_ids": [
+        3
+      ],
+      "quote": "This distinction matters because deeper sequencing may reduce sampling uncertainty, whereas it cannot recreate an original sequence that has been lost from the population.",
+      "page_ref": "Page 1"
+    },
+    {
+      "text": "While the framework helps evaluate architectural trade-offs, the simulated predictions have not yet been validated using sequencing data from engineered living strains.",
+      "source_ids": [
+        2
+      ],
+      "quote": "The present results have not been validated against sequencing measurements from an engineered strain.",
+      "page_ref": "Page 5"
+    }
+  ],
+  "key_topics": [
+    "This",
+    "Each",
+    "Mutation",
+    "Storage",
+    "Recovery",
+    "With",
+    "Selection",
+    "Simulation",
+    "Increasing",
+    "Index"
+  ],
+  "document_iq": {
+    "document": "Microbial_DNA_Storage_IEEE.pdf",
+    "title": "Microbial_DNA_Storage_IEEE",
+    "iq_score": 88.12,
+    "grade": "A",
+    "health": "Very Good",
+    "metrics": {
+      "extraction_score": 15.12,
+      "chunk_score": 18.0,
+      "embedding_score": 20,
+      "ocr_score": 20,
+      "metadata_score": 15.0
+    },
+    "pipeline": {
+      "pages": 5,
+      "chunks": 9,
+      "text_length": 3023,
+      "chunk_density": 1.8,
+      "embedding_status": true,
+      "metadata_completeness": 1.0
+    }
+  },
+  "suggested_questions": [
+    "How do linked genomic events such as recombination and large deletions impact the reliability of multi-copy microbial DNA data storage?",
+    "What is the precise trade-off between increasing redundancy (storage copies) and maintaining acceptable payload density in microbial DNA storage?",
+    "How does selection pressure favoring damaged variants alter the long-run substitution-rate benchmark compared to the neutral population model?",
+    "What are the limitations of using a simplified decoder and a fixed population size of 1,000 cells in simulating long-term data recovery?",
+    "How do varying sequencing depths and generation checkpoints influence the accurate detection of data failure thresholds in microbial genomes?"
+  ],
+  "generated_at": "2026-10-25T08:28:32Z",
+  "generation_ms": 22105.6,
+  "from_cache": true
+}
