@@ -663,3 +663,107 @@ class DocumentOverviewResponse(BaseModel):
     generated_at: str = ""
     generation_ms: float = 0.0
     from_cache: bool = False
+
+
+# ===========================================================================
+# Task P1-5: Concept Graph, Knowledge DNA, Smart Router Schemas
+# ===========================================================================
+
+class ConceptSource(BaseModel):
+    document: str = ""
+    page: int | str = 1
+    chunk_id: str = ""
+
+
+class ConceptGraphNode(BaseModel):
+    id: str
+    label: str
+    cluster: str = "General"
+    relevance: float = 0.8
+    importance: float = 0.7
+    sources: list[ConceptSource] = Field(default_factory=list)
+
+
+class ConceptGraphEdge(BaseModel):
+    source: str
+    target: str
+    relation: str = "RELATES_TO"
+    sources: list[ConceptSource] = Field(default_factory=list)
+
+
+class ConceptGraphResponse(BaseModel):
+    document: str
+    nodes: list[ConceptGraphNode] = Field(default_factory=list)
+    edges: list[ConceptGraphEdge] = Field(default_factory=list)
+    total_nodes: int = 0
+    total_edges: int = 0
+    from_cache: bool = False
+
+
+class DocumentDNAResponse(BaseModel):
+    document: str
+    concepts: list[str] = Field(default_factory=list)
+    entities: list[dict[str, Any]] = Field(default_factory=list)
+    methods: list[str] = Field(default_factory=list)
+    claims: list[str] = Field(default_factory=list)
+    difficulty: str = "Intermediate"
+    novelty: str = "Medium"
+    summary: str = ""
+    sources: list[ConceptSource] = Field(default_factory=list)
+    from_cache: bool = False
+
+
+class DNACompareRequest(BaseModel):
+    document_a: str
+    document_b: str
+
+
+class DNACompareResponse(BaseModel):
+    document_a: str
+    document_b: str
+    shared_concepts: list[str] = Field(default_factory=list)
+    distinct_concepts_a: list[str] = Field(default_factory=list)
+    distinct_concepts_b: list[str] = Field(default_factory=list)
+    shared_methods: list[str] = Field(default_factory=list)
+    claims_a: list[str] = Field(default_factory=list)
+    claims_b: list[str] = Field(default_factory=list)
+    difficulty_comparison: dict[str, Any] = Field(default_factory=dict)
+    novelty_comparison: dict[str, Any] = Field(default_factory=dict)
+
+
+class SmartQueryRequest(BaseModel):
+    text: str = Field(..., min_length=1, description="Query text or command")
+    document_ids: list[str] | None = None
+    stream: bool = False
+    run_all: bool = False
+
+
+class SmartQueryResponse(BaseModel):
+    original_query: str
+    rewritten_query: str
+    matched_documents: list[str] = Field(default_factory=list)
+    detected_feature: str | None = None
+    executed_feature: str | None = None
+    run_all: bool = False
+    is_ambiguous: bool = False
+    clarification_options: list[str] = Field(default_factory=list)
+    result: Any = None
+
+
+class AutocompleteDocItem(BaseModel):
+    name: str
+    title: str = ""
+    type: str = "document"
+
+
+class AutocompleteFeatureItem(BaseModel):
+    feature: str
+    label: str = ""
+    keywords: list[str] = Field(default_factory=list)
+    type: str = "feature"
+
+
+class AutocompleteResponse(BaseModel):
+    query: str
+    documents: list[AutocompleteDocItem] = Field(default_factory=list)
+    features: list[AutocompleteFeatureItem] = Field(default_factory=list)

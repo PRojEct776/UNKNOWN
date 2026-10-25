@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.auth import (
@@ -27,6 +27,13 @@ from app.rag.document_eligibility import (
 
 from app.api.schemas import (
     DocumentOverviewResponse,
+    ConceptGraphResponse,
+    DocumentDNAResponse,
+    DNACompareRequest,
+    DNACompareResponse,
+    SmartQueryRequest,
+    SmartQueryResponse,
+    AutocompleteResponse,
     AnswerRequest,
     AnswerResponse,
     AdaptiveAnswerRequest,
@@ -1705,6 +1712,180 @@ def clear_history(
     from app.services.history_service import clear_history_entries
     count = clear_history_entries(user=user, workspace=workspace)
     return {"status": "cleared", "deleted_count": count}
+
+
+
+# ===========================================================================
+# Task P1-5: Concept Graph, Knowledge DNA, and Smart Router Endpoints
+# ===========================================================================
+
+@app.get("/documents/{document_name}/concept-graph", response_model=ConceptGraphResponse)
+@app.get("/concept-graph/{document_name}", response_model=ConceptGraphResponse, include_in_schema=False)
+def get_concept_graph(document_name: str):
+    """
+    Return concept graph (nodes, edges) extracted from chunks.
+    Drops any unsupported nodes or edges. Caches per document.
+    """
+    from app.services.smart_router_service import extract_concept_graph
+
+    safe_name = Path(document_name).name
+    def _llm_fn(prompt: str, temperature: float = 0.0) -> str:
+        resp = rag_service.llm.generate_grounded(prompt) if temperature == 0.0 else rag_service.llm.generate(prompt)
+        if not resp.success:
+            raise RuntimeError(resp.error or "LLM failed")
+        return resp.answer
+
+    try:
+        data = extract_concept_graph(
+            document_name=safe_name,
+            llm_fn=_llm_fn,
+            retriever=rag_service.retriever,
+        )
+        return ConceptGraphResponse(**data)
+    except Exception as exc:
+        logger.exception("Failed to extract concept graph for %s", safe_name)
+        raise HTTPException(status_code=500, detail=f"Failed to extract concept graph: {exc}") from exc
+
+
+@app.get("/documents/{document_name}/dna", response_model=DocumentDNAResponse)
+@app.get("/dna/{document_name}", response_model=DocumentDNAResponse, include_in_schema=False)
+def get_document_dna(document_name: str):
+    """
+    Return Knowledge DNA: concepts, entities, methods, claims, difficulty, novelty.
+    Caches per document.
+    """
+    from app.services.smart_router_service import extract_knowledge_dna_for_doc
+
+    safe_name = Path(document_name).name
+    def _llm_fn(prompt: str, temperature: float = 0.0) -> str:
+        resp = rag_service.llm.generate_grounded(prompt) if temperature == 0.0 else rag_service.llm.generate(prompt)
+        if not resp.success:
+            raise RuntimeError(resp.error or "LLM failed")
+        return resp.answer
+
+    try:
+        data = extract_knowledge_dna_for_doc(
+            document_name=safe_name,
+            llm_fn=_llm_fn,
+            retriever=rag_service.retriever,
+        )
+        return DocumentDNAResponse(**data)
+    except Exception as exc:
+        logger.exception("Failed to extract DNA for %s", safe_name)
+        raise HTTPException(status_code=500, detail=f"Failed to extract DNA: {exc}") from exc
+
+
+@app.post("/documents/dna/compare", response_model=DNACompareResponse)
+@app.post("/dna/compare", response_model=DNACompareResponse, include_in_schema=False)
+def compare_document_dna(request: DNACompareRequest):
+    """Compare Knowledge DNA between two documents."""
+    from app.services.smart_router_service import compare_two_document_dna
+
+    def _llm_fn(prompt: str, temperature: float = 0.0) -> str:
+        resp = rag_service.llm.generate_grounded(prompt) if temperature == 0.0 else rag_service.llm.generate(prompt)
+        if not resp.success:
+            raise RuntimeError(resp.error or "LLM failed")
+        return resp.answer
+
+    try:
+        data = compare_two_document_dna(
+            doc_a=request.document_a,
+            doc_b=request.document_b,
+            llm_fn=_llm_fn,
+            retriever=rag_service.retriever,
+        )
+        return DNACompareResponse(**data)
+    except Exception as exc:
+        logger.exception("Failed to compare DNA: %s and %s", request.document_a, request.document_b)
+        raise HTTPException(status_code=500, detail=f"Failed to compare DNA: {exc}") from exc
+
+
+@app.post("/smart-query")
+async def post_smart_query(request: SmartQueryRequest):
+    """
+    POST /smart-query:
+    - Fuzzy match document names using rapidfuzz.
+    - Detect feature keyword with synonym map and fallback classifier.
+    - If a feature is found, run ONLY it.
+    - Else (or if stream=True / run_all=True), stream progress events.
+    - Return rewritten query and clarification options when ambiguous.
+    """
+    from app.rag.utils import list_supported_documents
+    from app.services.smart_router_service import (
+        smart_route_query,
+        stream_run_all_features,
+        extract_concept_graph,
+        extract_knowledge_dna_for_doc,
+    )
+    from app.services.overview_service import generate_document_overview
+
+    docs = [d.name for d in list_supported_documents(settings.PAPERS_DIR)]
+    
+    routing = smart_route_query(
+        text=request.text,
+        document_ids=request.document_ids,
+        available_docs=docs,
+        run_all=request.run_all or ("run all" in request.text.lower()),
+    )
+
+    def _llm_fn(prompt: str, temperature: float = 0.0) -> str:
+        resp = rag_service.llm.generate_grounded(prompt) if temperature == 0.0 else rag_service.llm.generate(prompt)
+        if not resp.success:
+            raise RuntimeError(resp.error or "LLM failed")
+        return resp.answer
+
+    if request.stream or (routing["run_all"] and not routing["detected_feature"]):
+        return StreamingResponse(
+            stream_run_all_features(
+                query=routing["rewritten_query"],
+                document_names=routing["matched_documents"],
+                rag_service=rag_service,
+            ),
+            media_type="text/event-stream",
+        )
+
+    detected = routing["detected_feature"]
+    executed_result = None
+    if detected:
+        target_doc = routing["matched_documents"][0] if routing["matched_documents"] else (docs[0] if docs else "")
+        if detected == "mindmap":
+            executed_result = extract_concept_graph(target_doc, _llm_fn, rag_service.retriever) if target_doc else {}
+        elif detected == "dna":
+            executed_result = extract_knowledge_dna_for_doc(target_doc, _llm_fn, rag_service.retriever) if target_doc else {}
+        elif detected in ("summary", "overview"):
+            executed_result = generate_document_overview(target_doc, _llm_fn, rag_service.retriever) if target_doc else {}
+        elif detected == "qa":
+            try:
+                ans = rag_service.query(routing["rewritten_query"], document_names=routing["matched_documents"] or None)
+                executed_result = ans.model_dump() if hasattr(ans, "model_dump") else ans
+            except Exception as exc:
+                executed_result = {"error": str(exc)}
+        else:
+            executed_result = {"status": "executed", "feature": detected, "target_documents": routing["matched_documents"]}
+
+    return SmartQueryResponse(
+        original_query=routing["original_query"],
+        rewritten_query=routing["rewritten_query"],
+        matched_documents=routing["matched_documents"],
+        detected_feature=detected,
+        executed_feature=detected,
+        run_all=routing["run_all"],
+        is_ambiguous=routing["is_ambiguous"],
+        clarification_options=routing["clarification_options"],
+        result=executed_result,
+    )
+
+
+@app.get("/smart-query/autocomplete", response_model=AutocompleteResponse)
+@app.get("/autocomplete", response_model=AutocompleteResponse, include_in_schema=False)
+def autocomplete_query(q: str = ""):
+    """Autocomplete documents and features based on prefix."""
+    from app.rag.utils import list_supported_documents
+    from app.services.smart_router_service import autocomplete_smart_query
+
+    docs = [d.name for d in list_supported_documents(settings.PAPERS_DIR)]
+    result = autocomplete_smart_query(q, docs)
+    return AutocompleteResponse(**result)
 
 
 @app.get("/", include_in_schema=False)
