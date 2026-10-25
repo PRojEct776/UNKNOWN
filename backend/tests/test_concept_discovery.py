@@ -1,3 +1,5 @@
+import pytest
+
 import json
 
 from app.llm.base_provider import LLMResponse
@@ -96,6 +98,7 @@ class FakeConceptLLM:
         )
 
 
+@pytest.mark.slow
 def test_rag_service_concept_discovery_integration():
     service = RAGService()
     service.llm = FakeConceptLLM()

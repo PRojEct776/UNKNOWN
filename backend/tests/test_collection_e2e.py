@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.slow
+
 """End-to-End integration tests for multi-paper collections, scoped retrieval, batch upload, and capacity enforcement."""
 
 import io

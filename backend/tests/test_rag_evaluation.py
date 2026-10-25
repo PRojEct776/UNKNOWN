@@ -1,3 +1,5 @@
+import pytest
+
 from app.rag.context_builder import ContextBuilder
 from app.rag.hybrid_search import HybridSearch
 from app.rag.prompt_engine import PromptEngine
@@ -26,6 +28,7 @@ CASES = [
 ]
 
 
+@pytest.mark.slow
 def test_rag_retrieval_context_and_prompt_pipeline():
     retriever = HybridSearch()
     builder = ContextBuilder(max_chunks=5)

@@ -1,3 +1,5 @@
+import pytest
+
 from app.rag.hybrid_search import HybridSearch
 
 CASES = [
@@ -24,6 +26,7 @@ CASES = [
 ]
 
 
+@pytest.mark.slow
 def test_retrieval_quality_top5():
     retriever = HybridSearch()
 

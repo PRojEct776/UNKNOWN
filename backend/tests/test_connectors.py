@@ -252,6 +252,7 @@ def test_connector_failure_resilience(monkeypatch):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_wikipedia_integration():
     chunks = wikipedia.search("Quantum computing", n=2)
     assert len(chunks) > 0
@@ -260,6 +261,7 @@ def test_wikipedia_integration():
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_openalex_integration():
     chunks = openalex.search("Deep Learning", n=2)
     assert len(chunks) > 0
@@ -268,6 +270,7 @@ def test_openalex_integration():
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_arxiv_integration():
     chunks = arxiv.search("Machine Learning", n=2)
     assert len(chunks) > 0
@@ -276,6 +279,7 @@ def test_arxiv_integration():
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_crossref_integration():
     chunks = crossref.search("Neural Networks", n=2)
     assert len(chunks) > 0

@@ -1,3 +1,9 @@
+import pytest
+
+@pytest.mark.slow
+def test_evidence():
+    main()
+
 """
 UNKNOWN X v2.0
 Evidence Trail Integration Test

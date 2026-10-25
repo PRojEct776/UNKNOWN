@@ -37,58 +37,54 @@ def test_query_rejects_empty_query():
     assert response.status_code == 422
 
 
-def test_query_rate_limit_error():
-    with patch.object(
-        rag_service,
-        "query",
-        side_effect=_make_rag_error("Provider rate limited", "rate_limit"),
-    ):
-        response = client.post(
-            "/query",
-            json={"query": "What problem does the framework solve?"},
-        )
+def test_query_rate_limit_error(monkeypatch):
+    def mock_query(*args, **kwargs):
+        raise _make_rag_error("Provider rate limited", "rate_limit")
+
+    monkeypatch.setattr(rag_service, "query", mock_query)
+    response = client.post(
+        "/query",
+        json={"query": "What problem does the framework solve?"},
+    )
 
     assert response.status_code == 429
 
 
-def test_query_transient_error():
-    with patch.object(
-        rag_service,
-        "query",
-        side_effect=_make_rag_error("Provider temporarily unavailable", "transient"),
-    ):
-        response = client.post(
-            "/query",
-            json={"query": "What problem does the framework solve?"},
-        )
+def test_query_transient_error(monkeypatch):
+    def mock_query(*args, **kwargs):
+        raise _make_rag_error("Provider temporarily unavailable", "transient")
+
+    monkeypatch.setattr(rag_service, "query", mock_query)
+    response = client.post(
+        "/query",
+        json={"query": "What problem does the framework solve?"},
+    )
 
     assert response.status_code == 503
 
 
-def test_query_invalid_request_error():
-    with patch.object(
-        rag_service,
-        "query",
-        side_effect=_make_rag_error("Invalid provider request", "invalid_request"),
-    ):
-        response = client.post(
-            "/query",
-            json={"query": "What problem does the framework solve?"},
-        )
+def test_query_invalid_request_error(monkeypatch):
+    def mock_query(*args, **kwargs):
+        raise _make_rag_error("Invalid provider request", "invalid_request")
+
+    monkeypatch.setattr(rag_service, "query", mock_query)
+    response = client.post(
+        "/query",
+        json={"query": "What problem does the framework solve?"},
+    )
 
     assert response.status_code == 400
 
 
-def test_query_fatal_error():
-    with patch.object(
-        rag_service,
-        "query",
-        side_effect=_make_rag_error("Provider rejected request", "fatal"),
-    ):
-        response = client.post(
-            "/query",
-            json={"query": "What problem does the framework solve?"},
-        )
+def test_query_fatal_error(monkeypatch):
+    def mock_query(*args, **kwargs):
+        raise _make_rag_error("Provider rejected request", "fatal")
+
+    monkeypatch.setattr(rag_service, "query", mock_query)
+    response = client.post(
+        "/query",
+        json={"query": "What problem does the framework solve?"},
+    )
 
     assert response.status_code == 502
 
@@ -102,16 +98,15 @@ def test_query_rejects_oversized_query():
     assert response.status_code == 422
 
 
-def test_query_accepts_max_length_query():
-    with patch.object(
-        rag_service,
-        "query",
-        side_effect=_make_rag_error("Provider rate limited", "rate_limit"),
-    ):
-        response = client.post(
-            "/query",
-            json={"query": "a" * 1000},
-        )
+def test_query_accepts_max_length_query(monkeypatch):
+    def mock_query(*args, **kwargs):
+        raise _make_rag_error("Provider rate limited", "rate_limit")
+
+    monkeypatch.setattr(rag_service, "query", mock_query)
+    response = client.post(
+        "/query",
+        json={"query": "a" * 1000},
+    )
 
     assert response.status_code == 429
 

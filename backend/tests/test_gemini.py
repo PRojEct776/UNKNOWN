@@ -1,10 +1,10 @@
+import pytest
 from app.llm.gemini_provider import GeminiProvider
 
-gemini = GeminiProvider()
 
-question = "Explain cloud computing in two lines."
-
-response = gemini.generate(question)
-
-print("\nGemini Response:\n")
-print(response.answer if response.success else response.error)
+@pytest.mark.slow
+def test_gemini_smoke():
+    gemini = GeminiProvider()
+    question = "Explain cloud computing in two lines."
+    response = gemini.generate(question)
+    assert response is not None

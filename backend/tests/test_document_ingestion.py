@@ -5,6 +5,7 @@ from app.services.document_service import ingest_document, count_document_chunks
 from app.rag.hybrid_search import HybridSearch
 
 
+@pytest.mark.slow
 def test_ingest_txt_document(tmp_path):
     test_filename = "test_ingestion_doc.txt"
     test_file = settings.PAPERS_DIR / test_filename

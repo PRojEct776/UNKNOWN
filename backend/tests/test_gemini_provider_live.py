@@ -14,6 +14,9 @@ from app.llm.base_provider import ErrorKind
 from app.llm.gemini_provider import GeminiProvider
 
 
+import pytest
+
+@pytest.mark.slow
 def test_live_request(retries: int = 3, delay: int = 5) -> None:
     """Run a live Gemini request with retry for transient failures."""
 
