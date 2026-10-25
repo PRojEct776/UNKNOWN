@@ -15,6 +15,7 @@
  */
 
 import { getStoredUser } from './mockAuth';
+import type { ComparisonPair, Claim, Conflict, ConfidenceData } from '../types/query';
 
 // ---------------------------------------------------------------------------
 // Error Classification Classes
@@ -191,6 +192,15 @@ export interface BackendQueryResponse {
   query: string;
   query_type: string;
   answer: string;
+  summary?: string;
+  detail?: string;
+  doc_section?: string | null;
+  web_section?: string | null;
+  comparison?: ComparisonPair[];
+  claims?: Claim[];
+  conflicts?: Conflict[];
+  gaps?: string[];
+  confidence?: number | ConfidenceData | null;
   sources: BackendQuerySource[];
 }
 
@@ -806,4 +816,36 @@ export async function fetchDocumentOverview(
   return apiFetch<BackendDocumentOverview>(
     `/documents/${encodeURIComponent(documentName)}/overview`,
   );
+}
+
+
+// ---------------------------------------------------------------------------
+// Feedback API (Task P2-1)
+// ---------------------------------------------------------------------------
+
+export interface FeedbackPayload {
+  query: string;
+  answer: string;
+  sources?: unknown[];
+  feedback_type: 'thumbs_up' | 'thumbs_down' | 'wrong_answer';
+  comment?: string;
+  user_id?: string;
+}
+
+export interface FeedbackResponse {
+  status: string;
+  id: string;
+  feedback_type: string;
+  recorded_at: string;
+}
+
+export async function submitFeedback(payload: FeedbackPayload): Promise<FeedbackResponse> {
+  return apiFetch<FeedbackResponse>('/feedback', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchFeedbackRecords(): Promise<FeedbackResponse[]> {
+  return apiFetch<FeedbackResponse[]>('/feedback');
 }

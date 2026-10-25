@@ -475,7 +475,15 @@ export const KnowledgeWorkspacePage: React.FC = () => {
           request: { ...template.request, query: cleanQuery },
           origin: 'backend',
           answer: response.answer,
-          detailedAnswer: response.answer,
+          detailedAnswer: response.detail || response.answer,
+          summary: response.summary,
+          doc_section: response.doc_section,
+          web_section: response.web_section,
+          comparisonPairs: response.comparison,
+          claims: response.claims,
+          conflicts: response.conflicts,
+          gaps: response.gaps,
+          confidence: response.confidence,
           queryType: response.query_type,
           rawResponse: response,
           answerState: response.answer.trim() ? 'answer' : 'insufficient_evidence',
@@ -628,7 +636,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
           origin: 'backend',
           confidence: response.verdict_confidence,
           answer: `Debate Conclusion: ${response.final_verdict}`,
-          detailedAnswer: `Topic: ${response.topic}\n\nVerdict (${Math.round(response.verdict_confidence * 100)}% confidence): ${response.final_verdict}`,
+          detailedAnswer: `Topic: ${response.topic}\n\nVerdict (${response.verdict_confidence}% confidence): ${response.final_verdict}`,
           rawResponse: response,
           answerState: 'answer',
           debate: {
@@ -1459,6 +1467,15 @@ export const KnowledgeWorkspacePage: React.FC = () => {
               <AnswerPanel
                 answer={activeResult.answer}
                 detailedAnswer={activeResult.detailedAnswer}
+                summary={activeResult.summary}
+                doc_section={activeResult.doc_section}
+                web_section={activeResult.web_section}
+                comparison={activeResult.comparisonPairs}
+                claims={activeResult.claims}
+                conflicts={activeResult.conflicts}
+                gaps={activeResult.gaps}
+                sources={activeResult.sources}
+                query={activeResult.request?.query}
                 confidence={activeResult.confidence}
                 answerState={activeResult.answerState}
                 showDetailed={showDetailedAnswer}

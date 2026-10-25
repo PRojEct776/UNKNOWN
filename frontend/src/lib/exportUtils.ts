@@ -97,7 +97,9 @@ export function exportResultToMarkdown(result: WorkspaceResult, researcherName: 
     `**Researcher:** ${researcherName}`,
     `**Generated:** ${dateStr}`,
     `**Engine / Origin:** ${result.origin === 'backend' ? 'Verified FastAPI Backend (Hybrid BM25 + FAISS)' : 'Local Simulation / Demo'}`,
-    result.confidence !== undefined ? `**Confidence Score:** ${(result.confidence * 100).toFixed(1)}%` : '',
+    result.confidence !== undefined && result.confidence !== null
+      ? `**Overall Confidence:** ${typeof result.confidence === 'object' ? result.confidence.score : result.confidence}%`
+      : '',
     ``,
     `---`,
     ``,
@@ -322,7 +324,7 @@ export function exportResultToPrintableHtml(result: WorkspaceResult, researcherN
       <strong>Researcher:</strong> ${escapeHtml(researcherName)} &nbsp;|&nbsp;
       <strong>Date:</strong> ${escapeHtml(dateStr)} &nbsp;|&nbsp;
       <strong>Engine:</strong> UNKNOWN Hybrid Semantic Engine (BM25 + FAISS)
-      ${result.confidence !== undefined ? `&nbsp;|&nbsp; <strong>Confidence:</strong> ${(result.confidence * 100).toFixed(1)}%` : ''}
+      ${result.confidence !== undefined && result.confidence !== null ? `&nbsp;|&nbsp; <strong>Confidence:</strong> ${typeof result.confidence === 'object' ? result.confidence.score : result.confidence}%` : ''}
     </div>
   </div>
 
@@ -393,7 +395,7 @@ export function exportResultToPrintableHtml(result: WorkspaceResult, researcherN
         ${result.sources.map((s, i) => `
           <tr>
             <td>${i + 1}</td>
-            <td><strong>${escapeHtml(s.documentName)}</strong></td>
+            <td><strong>${escapeHtml(s.documentName || s.document || 'Unknown')}</strong></td>
             <td>${s.page ?? '1'}</td>
             <td style="font-family: monospace; font-size: 11px;">${escapeHtml(s.chunkId || '—')}</td>
             <td style="font-size: 11px; color: #64748b;">
@@ -532,7 +534,7 @@ export function exportSessionToHtml(history: WorkspaceHistoryItem[], researcherN
       ${item.result.sources?.length ? `
         <div class="sources-list">
           <strong>Citations (${item.result.sources.length}):</strong>
-          ${item.result.sources.map((s) => `${escapeHtml(s.documentName)} (P.${s.page ?? 1})`).join(', ')}
+          ${item.result.sources.map((s) => `${escapeHtml(s.documentName || s.document || 'Unknown')} (P.${s.page ?? 1})`).join(', ')}
         </div>
       ` : ''}
     </div>

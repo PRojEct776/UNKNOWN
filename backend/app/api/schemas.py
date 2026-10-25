@@ -767,3 +767,23 @@ class AutocompleteResponse(BaseModel):
     query: str
     documents: list[AutocompleteDocItem] = Field(default_factory=list)
     features: list[AutocompleteFeatureItem] = Field(default_factory=list)
+
+
+# ===========================================================================
+# Task P2-1: Feedback Schemas
+# ===========================================================================
+
+class FeedbackRequest(BaseModel):
+    query: str
+    answer: str
+    sources: list[Any] = Field(default_factory=list)
+    feedback_type: str = "thumbs_up"  # thumbs_up | thumbs_down | wrong_answer
+    comment: str | None = None
+    user_id: str | None = None
+
+
+class FeedbackResponse(BaseModel):
+    status: str
+    id: str
+    feedback_type: str
+    recorded_at: str

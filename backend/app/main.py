@@ -34,6 +34,8 @@ from app.api.schemas import (
     SmartQueryRequest,
     SmartQueryResponse,
     AutocompleteResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     AnswerRequest,
     AnswerResponse,
     AdaptiveAnswerRequest,
@@ -1886,6 +1888,40 @@ def autocomplete_query(q: str = ""):
     docs = [d.name for d in list_supported_documents(settings.PAPERS_DIR)]
     result = autocomplete_smart_query(q, docs)
     return AutocompleteResponse(**result)
+
+
+
+# ===========================================================================
+# Task P2-1: User Feedback Endpoint
+# ===========================================================================
+
+@app.post("/feedback", response_model=FeedbackResponse)
+def submit_feedback(request: FeedbackRequest):
+    """Log and store user feedback on answers."""
+    from app.services.feedback_service import record_feedback
+
+    record = record_feedback(
+        query=request.query,
+        answer=request.answer,
+        sources=request.sources,
+        feedback_type=request.feedback_type,
+        comment=request.comment,
+        user_id=request.user_id,
+    )
+    return FeedbackResponse(
+        status="recorded",
+        id=record["id"],
+        feedback_type=record["feedback_type"],
+        recorded_at=record["created_at"],
+    )
+
+
+@app.get("/feedback")
+def list_feedback(user_id: str | None = None):
+    """Retrieve logged feedback records."""
+    from app.services.feedback_service import get_feedback_records
+
+    return get_feedback_records(user_id=user_id)
 
 
 @app.get("/", include_in_schema=False)
