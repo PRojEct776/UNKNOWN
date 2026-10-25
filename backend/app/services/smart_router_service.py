@@ -103,6 +103,7 @@ def _verify_concept_in_chunks(concept_label: str, chunks: list[dict[str, Any]]) 
                 "document": c.get("document", ""),
                 "page": c.get("page", 1),
                 "chunk_id": c.get("chunk_id", ""),
+                "passage": c.get("text", "")[:350],
             })
 
     return (len(sources) > 0, sources)
@@ -134,6 +135,7 @@ def _verify_relation_in_chunks(
                 "document": c.get("document", ""),
                 "page": c.get("page", 1),
                 "chunk_id": c.get("chunk_id", ""),
+                "passage": c.get("text", "")[:350],
             })
 
     return (len(sources) > 0, sources)

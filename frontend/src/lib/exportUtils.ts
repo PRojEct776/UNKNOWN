@@ -941,3 +941,45 @@ export async function downloadResultExport(
   document.body.removeChild(a);
   window.URL.revokeObjectURL(url);
 }
+
+
+// ---------------------------------------------------------------------------
+// Mind Map & Knowledge DNA Generic Exporters (Task P2-3)
+// ---------------------------------------------------------------------------
+
+export function downloadJsonFile(
+  filename: string,
+  data: unknown,
+  userId: string = 'researcher',
+  query: string = 'JSON Export',
+): number {
+  const safeFilename = filename.endsWith('.json') ? filename : filename + '.json';
+  const content = JSON.stringify(data, null, 2);
+  const size = triggerBrowserDownload(safeFilename, content, 'application/json;charset=utf-8');
+  recordDownload(userId, {
+    query,
+    tool: 'json-export',
+    format: 'json',
+    filename: safeFilename,
+    sizeBytes: size,
+  });
+  return size;
+}
+
+export function downloadMarkdownFile(
+  filename: string,
+  markdown: string,
+  userId: string = 'researcher',
+  query: string = 'Markdown Export',
+): number {
+  const safeFilename = filename.endsWith('.md') ? filename : filename + '.md';
+  const size = triggerBrowserDownload(safeFilename, markdown, 'text/markdown;charset=utf-8');
+  recordDownload(userId, {
+    query,
+    tool: 'markdown-export',
+    format: 'markdown',
+    filename: safeFilename,
+    sizeBytes: size,
+  });
+  return size;
+}

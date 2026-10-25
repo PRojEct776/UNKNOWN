@@ -673,6 +673,7 @@ class ConceptSource(BaseModel):
     document: str = ""
     page: int | str = 1
     chunk_id: str = ""
+    passage: str = ""
 
 
 class ConceptGraphNode(BaseModel):

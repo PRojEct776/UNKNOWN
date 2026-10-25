@@ -849,3 +849,104 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<Feedback
 export async function fetchFeedbackRecords(): Promise<FeedbackResponse[]> {
   return apiFetch<FeedbackResponse[]>('/feedback');
 }
+
+
+// ---------------------------------------------------------------------------
+// Concept Graph & Knowledge DNA APIs (Task P1-5 & P2-3)
+// ---------------------------------------------------------------------------
+
+export interface BackendConceptSource {
+  document: string;
+  page: number | string;
+  chunk_id: string;
+  passage?: string;
+}
+
+export interface BackendConceptGraphNode {
+  id: string;
+  label: string;
+  cluster: string;
+  relevance: number;
+  importance: number;
+  sources: BackendConceptSource[];
+}
+
+export interface BackendConceptGraphEdge {
+  source: string;
+  target: string;
+  relation: string;
+  sources: BackendConceptSource[];
+}
+
+export interface BackendConceptGraphResponse {
+  document: string;
+  nodes: BackendConceptGraphNode[];
+  edges: BackendConceptGraphEdge[];
+  total_nodes: number;
+  total_edges: number;
+  from_cache: boolean;
+}
+
+export interface BackendDocumentDNAEntity {
+  name: string;
+  type: string;
+  page?: number | string;
+}
+
+export interface BackendDocumentDNAResponse {
+  document: string;
+  concepts: string[];
+  entities: BackendDocumentDNAEntity[];
+  methods: string[];
+  claims: string[];
+  difficulty: string;
+  novelty: string;
+  summary: string;
+  sources: BackendConceptSource[];
+  from_cache: boolean;
+}
+
+export interface BackendDNACompareResponse {
+  document_a: string;
+  document_b: string;
+  shared_concepts: string[];
+  distinct_concepts_a: string[];
+  distinct_concepts_b: string[];
+  shared_methods: string[];
+  claims_a: string[];
+  claims_b: string[];
+  difficulty_comparison: {
+    document_a?: string;
+    document_b?: string;
+  };
+  novelty_comparison: {
+    document_a?: string;
+    document_b?: string;
+  };
+}
+
+export async function fetchConceptGraph(
+  documentName: string,
+): Promise<BackendConceptGraphResponse> {
+  return apiFetch<BackendConceptGraphResponse>(
+    '/documents/' + encodeURIComponent(documentName) + '/concept-graph',
+  );
+}
+
+export async function fetchDocumentDNA(
+  documentName: string,
+): Promise<BackendDocumentDNAResponse> {
+  return apiFetch<BackendDocumentDNAResponse>(
+    '/documents/' + encodeURIComponent(documentName) + '/dna',
+  );
+}
+
+export async function compareDocumentDNA(
+  docA: string,
+  docB: string,
+): Promise<BackendDNACompareResponse> {
+  return apiFetch<BackendDNACompareResponse>('/documents/dna/compare', {
+    method: 'POST',
+    body: JSON.stringify({ document_a: docA, document_b: docB }),
+  });
+}

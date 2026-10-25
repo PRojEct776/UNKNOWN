@@ -1488,7 +1488,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
               {isAnswered && (
                 <>
                   {activeResult.request.mode === 'knowledge-dna' && (
-                    <KnowledgeDNA data={activeResult.knowledgeDNA} />
+                    <KnowledgeDNA data={activeResult.knowledgeDNA} documentName={Array.from(selectedDocNames)[0]} />
                   )}
 
                   {activeResult.request.mode === 'reason' && (
@@ -1516,7 +1516,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
                   )}
 
                   {activeResult.request.mode === 'knowledge-map' && (
-                    <KnowledgeMindMap root={activeResult.mindMap} />
+                    <KnowledgeMindMap root={activeResult.mindMap} documentName={Array.from(selectedDocNames)[0]} />
                   )}
                 </>
               )}
@@ -1544,6 +1544,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
                       {([
                         ['knowledge', '3D Knowledge Orbit'],
                         ['mind-map', 'Relational Mind Map'],
+                        ['dna', 'Knowledge DNA'],
                       ] as [VisualizationView, string][]).map(([view, label]) => (
                         <button
                           key={view}
@@ -1570,7 +1571,17 @@ export const KnowledgeWorkspacePage: React.FC = () => {
                       onOpenSources={() => setIsSourcesOpen(true)}
                     />
                   )}
-                  {visualization === 'mind-map' && <KnowledgeMindMap root={activeResult.mindMap} />}
+                  {visualization === 'mind-map' && (
+
+                    <KnowledgeMindMap root={activeResult.mindMap} documentName={Array.from(selectedDocNames)[0]} />
+
+                  )}
+
+                  {visualization === 'dna' && (
+
+                    <KnowledgeDNA data={activeResult.knowledgeDNA} documentName={Array.from(selectedDocNames)[0]} />
+
+                  )}
                 </section>
               )}
             </div>
