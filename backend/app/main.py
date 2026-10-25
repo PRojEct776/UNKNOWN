@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.auth import (
@@ -36,6 +36,7 @@ from app.api.schemas import (
     AutocompleteResponse,
     FeedbackRequest,
     FeedbackResponse,
+    ExportRequest,
     AnswerRequest,
     AnswerResponse,
     AdaptiveAnswerRequest,
@@ -1922,6 +1923,74 @@ def list_feedback(user_id: str | None = None):
     from app.services.feedback_service import get_feedback_records
 
     return get_feedback_records(user_id=user_id)
+
+
+
+# ===========================================================================
+# Task P2-2: Export Endpoint (PDF, DOCX, Markdown, HTML, Image ZIP)
+# ===========================================================================
+
+@app.post("/export/{export_format}")
+@app.post("/export")
+def export_result(
+    export_format: str = "pdf",
+    request: ExportRequest = None,
+):
+    """
+    Export query results in PDF, DOCX, Markdown, HTML, or Image ZIP format.
+    Includes full text, headings, sources, confidence, and figures/tables placed beside passages.
+    """
+    from app.services.export_service import (
+        export_result_pdf,
+        export_result_docx,
+        export_result_markdown,
+        export_result_html,
+        export_result_images_zip,
+    )
+
+    req_data = request.model_dump() if request else {}
+    fmt = export_format.lower().strip()
+
+    if fmt == "pdf":
+        pdf_bytes = export_result_pdf(req_data)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'attachment; filename="unknown_report.pdf"'},
+        )
+    elif fmt in ("docx", "doc", "word"):
+        docx_bytes = export_result_docx(req_data)
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": 'attachment; filename="unknown_report.docx"'},
+        )
+    elif fmt in ("markdown", "md"):
+        md_text = export_result_markdown(req_data)
+        return Response(
+            content=md_text.encode("utf-8"),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="unknown_report.md"'},
+        )
+    elif fmt in ("html", "htm"):
+        html_text = export_result_html(req_data)
+        return Response(
+            content=html_text.encode("utf-8"),
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="unknown_report.html"'},
+        )
+    elif fmt in ("zip", "images", "images-zip", "image-zip"):
+        zip_bytes = export_result_images_zip(req_data)
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={"Content-Disposition": 'attachment; filename="unknown_figures.zip"'},
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '{export_format}'. Supported formats: pdf, docx, markdown, html, zip",
+        )
 
 
 @app.get("/", include_in_schema=False)

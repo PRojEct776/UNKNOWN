@@ -20,12 +20,15 @@ import {
   AlertCircle,
   XCircle,
   Send,
+  Download,
+  Archive,
 } from 'lucide-react';
 import type { AnswerState, Claim, ComparisonPair, Conflict, ConfidenceData } from '../../types/query';
 import type { Source } from '../../types/evidence';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { AbstentionPanel } from './AbstentionPanel';
 import { submitFeedback } from '../../lib/api';
+import { downloadResultExport } from '../../lib/exportUtils';
 
 export interface AnswerPanelProps {
   answer: string;
@@ -88,6 +91,31 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = ({
   const [reportComment, setReportComment] = useState('');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
+  const handleDownload = async (format: 'pdf' | 'docx' | 'markdown' | 'html' | 'zip') => {
+    try {
+      await downloadResultExport(
+        {
+          query: query || answer.slice(0, 60),
+          answer,
+          detailed_answer: detailedAnswer || answer,
+          summary: summaryText,
+          doc_section,
+          web_section,
+          comparison,
+          claims,
+          conflicts,
+          gaps,
+          confidence,
+          sources,
+          document_names: sources.map((s) => s.document || s.documentName || '').filter(Boolean),
+        },
+        format
+      );
+    } catch (err) {
+      console.error('Export download error:', err);
+    }
+  };
 
   const handleCopyAnswer = () => {
     const textToCopy = showDetailed ? detailedAnswer || answer : answer;
@@ -197,6 +225,62 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = ({
             </button>
           )}
           <ConfidenceBadge confidence={confidence} />
+        </div>
+      </div>
+
+      {/* Export & Download Toolbar (Task P2-2) */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-white/5 bg-[#141d26]/60 px-3 py-2 text-xs" data-testid="export-buttons-container">
+        <div className="flex items-center gap-1.5 text-[#f3faf0]/70 font-mono text-[11px]">
+          <Download className="h-3.5 w-3.5 text-[#a7d0d2]" />
+          <span>Export Result:</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => handleDownload('pdf')}
+            className="flex items-center gap-1 rounded bg-[#0b1219] border border-white/10 px-2.5 py-1 text-[11px] font-mono text-[#a7d0d2] hover:text-white hover:border-[#a7d0d2]/50 transition-colors cursor-pointer"
+            data-testid="export-pdf-button"
+            title="Download formatted PDF report"
+          >
+            <span>PDF</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDownload('docx')}
+            className="flex items-center gap-1 rounded bg-[#0b1219] border border-white/10 px-2.5 py-1 text-[11px] font-mono text-[#a7d0d2] hover:text-white hover:border-[#a7d0d2]/50 transition-colors cursor-pointer"
+            data-testid="export-docx-button"
+            title="Download Word DOCX report"
+          >
+            <span>DOCX</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDownload('markdown')}
+            className="flex items-center gap-1 rounded bg-[#0b1219] border border-white/10 px-2.5 py-1 text-[11px] font-mono text-[#a7d0d2] hover:text-white hover:border-[#a7d0d2]/50 transition-colors cursor-pointer"
+            data-testid="export-md-button"
+            title="Download Markdown report (.md)"
+          >
+            <span>Markdown</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDownload('html')}
+            className="flex items-center gap-1 rounded bg-[#0b1219] border border-white/10 px-2.5 py-1 text-[11px] font-mono text-[#a7d0d2] hover:text-white hover:border-[#a7d0d2]/50 transition-colors cursor-pointer"
+            data-testid="export-html-button"
+            title="Download HTML report"
+          >
+            <span>HTML</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDownload('zip')}
+            className="flex items-center gap-1 rounded bg-[#0b1219] border border-white/10 px-2.5 py-1 text-[11px] font-mono text-[#a7d0d2] hover:text-white hover:border-[#a7d0d2]/50 transition-colors cursor-pointer"
+            data-testid="export-zip-button"
+            title="Download extracted figures as Image ZIP"
+          >
+            <Archive className="h-3 w-3" />
+            <span>Images (ZIP)</span>
+          </button>
         </div>
       </div>
 

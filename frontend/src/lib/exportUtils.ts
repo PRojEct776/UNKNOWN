@@ -895,3 +895,49 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Backend Multi-Format Result Export (Task P2-2)
+// ---------------------------------------------------------------------------
+
+export async function downloadResultExport(
+  payload: {
+    query: string;
+    answer: string;
+    detailed_answer?: string;
+    summary?: string;
+    doc_section?: string | null;
+    web_section?: string | null;
+    comparison?: unknown[];
+    claims?: unknown[];
+    conflicts?: unknown[];
+    gaps?: string[];
+    confidence?: unknown;
+    sources?: unknown[];
+    document_names?: string[];
+  },
+  format: 'pdf' | 'docx' | 'markdown' | 'html' | 'zip',
+): Promise<void> {
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const response = await fetch(`${backendUrl}/export/${format}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Export to ${format.toUpperCase()} failed: ${response.statusText}`);
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ext = format === 'markdown' ? 'md' : format === 'zip' ? 'zip' : format;
+  a.href = url;
+  a.download = `unknown_report_${format}_${Date.now()}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}

@@ -787,3 +787,25 @@ class FeedbackResponse(BaseModel):
     id: str
     feedback_type: str
     recorded_at: str
+
+
+# ===========================================================================
+# Task P2-2: Export Request Schema
+# ===========================================================================
+
+class ExportRequest(BaseModel):
+    query: str = "UNKNOWN Research Inquiry"
+    answer: str = ""
+    detailed_answer: str | None = None
+    summary: str | None = None
+    doc_section: str | None = None
+    web_section: str | None = None
+    comparison: list[dict[str, Any] | Any] = Field(default_factory=list)
+    claims: list[dict[str, Any] | Any] = Field(default_factory=list)
+    conflicts: list[dict[str, Any] | Any] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    confidence: dict[str, Any] | float | None = None
+    sources: list[dict[str, Any] | Any] = Field(default_factory=list)
+    document_names: list[str] = Field(default_factory=list)
+    sample_greek: str | None = None
+    sample_hindi: str | None = None
