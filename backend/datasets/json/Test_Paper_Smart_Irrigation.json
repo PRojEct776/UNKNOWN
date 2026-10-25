@@ -1,0 +1,18 @@
+{
+    "title": "Test_Paper_Smart_Irrigation",
+    "source_file": "Test_Paper_Smart_Irrigation.pdf",
+    "document_type": ".pdf",
+    "document_hash": "4eb30eba6d23b215229eeef0a5b8d617abbea05459ab46092dd7a71f86777043",
+    "total_pages": 1,
+    "total_words": 222,
+    "estimated_read_time": 1.11,
+    "pages": [
+        {
+            "page_number": 1,
+            "word_count": 222,
+            "reading_time_minutes": 1.11,
+            "page_hash": "4eb30eba6d23b215229eeef0a5b8d617abbea05459ab46092dd7a71f86777043",
+            "text": "Test Research Paper: IoT-Based Smart Irrigation Purpose This synthetic test paper describes an IoT smart irrigation prototype. It is designed for testing document upload, retrieval, citations, and multi-document comparison. System Design The prototype uses a soil-moisture sensor, an ESP32 microcontroller, a relay module, and a water pump. The sensor is sampled every 30 seconds. When soil moisture falls below 35 percent, the controller switches the pump on. The pump switches off when moisture reaches 55 percent. This hysteresis band helps reduce rapid switching. Connectivity and Data The ESP32 sends timestamped moisture readings and pump states to a local dashboard over Wi-Fi using HTTP. If Wi-Fi is unavailable, local threshold-based operation continues and up to 500 readings are stored in a circular buffer. Evaluation Plan A proposed seven-day test compares water use against a fixed-timer irrigation baseline. Metrics include total water consumed, time below the 35 percent moisture threshold, pump activation count, and missing sensor readings. No measured experimental results are claimed. Limitations The prototype has not been field-validated. Sensor calibration may vary with soil type, salinity, and placement. The HTTP dashboard is intended for a trusted local network and does not define production-grade authentication. Quick Facts Controller: ESP32. Sampling interval: 30 seconds. Pump ON threshold: below 35 percent. Pump OFF threshold: 55 percent. Offline buffer: 500 readings. Proposed evaluation duration: seven days."
+        }
+    ]
+}

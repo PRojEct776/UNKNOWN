@@ -445,50 +445,49 @@ def export_result_pdf(data: dict[str, Any]) -> bytes:
     story.append(panels_table)
     story.append(Spacer(1, 8))
 
-    # 9. Unicode Verification Section (Greek & Hindi)
-    story.append(Paragraph("Unicode Language Verification (Greek & Hindi)", h2_style))
-    greek_sample = data.get("sample_greek") or "Greek mathematical formulation: α + β = γ · Ω (π = 3.14159, Σ = 100)"
-    hindi_sample = data.get("sample_hindi") or "Hindi scientific translation: नमस्ते! यह अनुसंधान परिणाम परीक्षण और साक्ष्य पर आधारित है।"
-
-    story.append(Paragraph(greek_sample, greek_style))
-    story.append(Spacer(1, 2))
-    story.append(Paragraph(hindi_sample, hindi_style))
-    story.append(Spacer(1, 8))
+    # 9. Unicode Verification Section (Greek & Hindi - if provided)
+    greek_sample = data.get("sample_greek")
+    hindi_sample = data.get("sample_hindi")
+    if greek_sample or hindi_sample:
+        story.append(Paragraph("Unicode Language Verification (Greek & Hindi)", h2_style))
+        if greek_sample:
+            story.append(Paragraph(greek_sample, greek_style))
+            story.append(Spacer(1, 2))
+        if hindi_sample:
+            story.append(Paragraph(hindi_sample, hindi_style))
+            story.append(Spacer(1, 8))
 
     # 10. Canonical Retrieved Sources (Real Table)
     story.append(Paragraph("Retrieved Canonical Sources", h2_style))
     sources = data.get("sources", [])
     if not sources:
-        sources = [
-            {"rank": 1, "title": "Adaptive Hybrid RAG Survey", "authors": ["A. Smith"], "year": 2024, "origin": "document", "reliability": 0.95, "passage": "Hybrid BM25 and dense retrieval delivers high precision."},
-            {"rank": 2, "title": "Empirical Verification Benchmark", "authors": ["B. Jones"], "year": 2023, "origin": "web", "reliability": 0.88, "passage": "DeBERTa NLI cross-encoders verify grounded claims."},
-        ]
+        story.append(Paragraph("No canonical sources available for this result.", body_style))
+    else:
+        src_rows = [["#", "Title / Document", "Origin", "Reliability", "Passage Excerpt"]]
+        for s in sources[:6]:
+            rk = str(s.get("rank", 1))
+            tt = str(s.get("title") or s.get("document", "Document"))
+            og = str(s.get("origin", "document")).title()
+            rel = f"{float(s.get('reliability', 0.85)):.2f}"
+            psg = str(s.get("passage") or s.get("quote", ""))[:140]
+            src_rows.append([
+                Paragraph(rk, body_style),
+                Paragraph(f"<b>{tt}</b>", body_style),
+                Paragraph(og, body_style),
+                Paragraph(rel, body_style),
+                Paragraph(f'"{psg}"', body_style),
+            ])
 
-    src_rows = [["#", "Title / Document", "Origin", "Reliability", "Passage Excerpt"]]
-    for s in sources[:6]:
-        rk = str(s.get("rank", 1))
-        tt = str(s.get("title") or s.get("document", "Document"))
-        og = str(s.get("origin", "document")).title()
-        rel = f"{float(s.get('reliability', 0.85)):.2f}"
-        psg = str(s.get("passage") or s.get("quote", ""))[:140]
-        src_rows.append([
-            Paragraph(rk, body_style),
-            Paragraph(f"<b>{tt}</b>", body_style),
-            Paragraph(og, body_style),
-            Paragraph(rel, body_style),
-            Paragraph(f'"{psg}"', body_style),
-        ])
-
-    src_table = Table(src_rows, colWidths=[25, 145, 60, 60, 240])
-    src_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    story.append(src_table)
+        src_table = Table(src_rows, colWidths=[25, 145, 60, 60, 240])
+        src_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(src_table)
 
     # Build PDF
     doc.build(story)
@@ -609,35 +608,37 @@ def export_result_docx(data: dict[str, Any]) -> bytes:
     p2.add_run("What I could not find: ").bold = True
     p2.add_run("; ".join(gaps) if gaps else "All aspects of the inquiry were addressed by available sources.")
 
-    # Unicode Verification (Greek & Hindi)
-    doc.add_heading("Unicode Language Verification (Greek & Hindi)", level=1)
-    greek_sample = data.get("sample_greek") or "Greek mathematical formulation: α + β = γ · Ω (π = 3.14159, Σ = 100)"
-    hindi_sample = data.get("sample_hindi") or "Hindi scientific translation: नमस्ते! यह अनुसंधान परिणाम परीक्षण और साक्ष्य पर आधारित है।"
-    doc.add_paragraph(greek_sample)
-    doc.add_paragraph(hindi_sample)
+    # Unicode Verification (Greek & Hindi - if provided)
+    greek_sample = data.get("sample_greek")
+    hindi_sample = data.get("sample_hindi")
+    if greek_sample or hindi_sample:
+        doc.add_heading("Unicode Language Verification (Greek & Hindi)", level=1)
+        if greek_sample:
+            doc.add_paragraph(greek_sample)
+        if hindi_sample:
+            doc.add_paragraph(hindi_sample)
 
     # Real Table: Sources
+    doc.add_heading("Retrieved Canonical Sources", level=1)
     sources = data.get("sources", [])
     if not sources:
-        sources = [
-            {"rank": 1, "title": "Adaptive Hybrid RAG Survey", "authors": ["A. Smith"], "year": 2024, "origin": "document", "reliability": 0.95, "passage": "Hybrid BM25 and dense retrieval delivers high precision."},
-        ]
-    doc.add_heading("Retrieved Canonical Sources", level=1)
-    src_table = doc.add_table(rows=1, cols=5)
-    src_table.style = "Table Grid"
-    s_hdr = src_table.rows[0].cells
-    s_hdr[0].text = "#"
-    s_hdr[1].text = "Title / Document"
-    s_hdr[2].text = "Origin"
-    s_hdr[3].text = "Reliability"
-    s_hdr[4].text = "Passage"
-    for s in sources[:6]:
-        sr = src_table.add_row().cells
-        sr[0].text = str(s.get("rank", 1))
-        sr[1].text = str(s.get("title") or s.get("document", "Document"))
-        sr[2].text = str(s.get("origin", "document")).title()
-        sr[3].text = f"{float(s.get('reliability', 0.85)):.2f}"
-        sr[4].text = str(s.get("passage") or s.get("quote", ""))
+        doc.add_paragraph("No canonical sources available for this result.")
+    else:
+        src_table = doc.add_table(rows=1, cols=5)
+        src_table.style = "Table Grid"
+        s_hdr = src_table.rows[0].cells
+        s_hdr[0].text = "#"
+        s_hdr[1].text = "Title / Document"
+        s_hdr[2].text = "Origin"
+        s_hdr[3].text = "Reliability"
+        s_hdr[4].text = "Passage"
+        for s in sources[:6]:
+            sr = src_table.add_row().cells
+            sr[0].text = str(s.get("rank", 1))
+            sr[1].text = str(s.get("title") or s.get("document", "Document"))
+            sr[2].text = str(s.get("origin", "document")).title()
+            sr[3].text = f"{float(s.get('reliability', 0.85)):.2f}"
+            sr[4].text = str(s.get("passage") or s.get("quote", ""))
 
     bio = io.BytesIO()
     doc.save(bio)
@@ -746,17 +747,16 @@ def export_result_markdown(data: dict[str, Any]) -> str:
         "",
     ])
 
-    # Unicode verification (Greek & Hindi)
-    greek_sample = data.get("sample_greek") or "Greek mathematical formulation: α + β = γ · Ω (π = 3.14159, Σ = 100)"
-    hindi_sample = data.get("sample_hindi") or "Hindi scientific translation: नमस्ते! यह अनुसंधान परिणाम परीक्षण और साक्ष्य पर आधारित है।"
-    lines.extend([
-        "## Unicode Language Verification (Greek & Hindi)",
-        "",
-        greek_sample,
-        "",
-        hindi_sample,
-        "",
-    ])
+    # Unicode verification (Greek & Hindi - if provided)
+    greek_sample = data.get("sample_greek")
+    hindi_sample = data.get("sample_hindi")
+    if greek_sample or hindi_sample:
+        lines.extend([
+            "## Unicode Language Verification (Greek & Hindi)",
+            "",
+            *( [greek_sample, ""] if greek_sample else [] ),
+            *( [hindi_sample, ""] if hindi_sample else [] ),
+        ])
 
     # Sources real markdown table
     sources = data.get("sources", [])
@@ -797,8 +797,17 @@ def export_result_html(data: dict[str, Any]) -> str:
     doc_names = data.get("document_names", [])
     figures = extract_document_figures(doc_names)
 
-    greek_sample = data.get("sample_greek") or "Greek mathematical formulation: α + β = γ · Ω (π = 3.14159, Σ = 100)"
-    hindi_sample = data.get("sample_hindi") or "Hindi scientific translation: नमस्ते! यह अनुसंधान परिणाम परीक्षण और साक्ष्य पर आधारित है।"
+    greek_sample = data.get("sample_greek")
+    hindi_sample = data.get("sample_hindi")
+    unicode_html = ""
+    if greek_sample or hindi_sample:
+        unicode_html = f"""
+        <h2>Unicode Language Verification (Greek & Hindi)</h2>
+        <div class="unicode-box">
+            {f'<p><b>Greek Sample:</b> {greek_sample}</p>' if greek_sample else ''}
+            {f'<p><b>Hindi Sample:</b> {hindi_sample}</p>' if hindi_sample else ''}
+        </div>
+        """
 
     # Build Base64 figures
     fig_html = ""
@@ -917,11 +926,7 @@ def export_result_html(data: dict[str, Any]) -> str:
         <div class="observation-panel"><b>Conflicting sources:</b> {conf_text}</div>
         <div class="observation-panel" style="background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.25);"><b>What I could not find:</b> {gaps_text}</div>
 
-        <h2>Unicode Language Verification (Greek & Hindi)</h2>
-        <div class="unicode-box">
-            <p><b>Greek Sample:</b> {greek_sample}</p>
-            <p><b>Hindi Sample:</b> {hindi_sample}</p>
-        </div>
+        {unicode_html}
 
         {"<h2>Retrieved Canonical Sources</h2><table><thead><tr><th>#</th><th>Document</th><th>Origin</th><th>Reliability</th><th>Passage</th></tr></thead><tbody>" + src_tbody + "</tbody></table>" if src_tbody else ""}
     </div>

@@ -5,6 +5,7 @@ import type { ReasoningResult } from './reasoning';
 import type { KnowledgeDNA, MindMapNode } from './knowledge';
 
 export type AnalysisMode =
+  | 'overview'
   | 'discover'
   | 'reason'
   | 'verify'

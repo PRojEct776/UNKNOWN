@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-import cohere
+try:
+    import cohere
+except ImportError:
+    cohere = None  # type: ignore[assignment]
 import httpx
 
 from app.llm.base_provider import BaseProvider, ErrorKind, kind_from_http_status
@@ -15,6 +18,10 @@ class CohereProvider(BaseProvider):
     provider_name = "cohere"
 
     def __init__(self) -> None:
+        if cohere is None:
+            raise ImportError(
+                "cohere package is not installed. Install with: pip install cohere"
+            )
         api_key = getattr(settings, "COHERE_API_KEY", None)
         model = getattr(settings, "COHERE_MODEL", None)
 

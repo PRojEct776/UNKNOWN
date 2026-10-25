@@ -1,0 +1,41 @@
+{
+    "document": "UNKNOWN_IEEE_paper.docx",
+    "title": "UNKNOWN_IEEE_paper",
+    "user_id": "default_user",
+    "is_test_document": false,
+    "document_type": "docx",
+    "document_hash": "202b53f2c779cd0b68948f04f3743b65bcb83c1941e76c284ad88c54e55cc19c",
+    "pages": 1,
+    "chunks": 12,
+    "text_length": 4710,
+    "estimated_read_time": 23.55,
+    "embedding_status": true,
+    "embedding_status_detail": "verified",
+    "embedding_expected_chunks": 12,
+    "embedding_verified_chunks": 12,
+    "ocr_required": false,
+    "ocr_quality": 1.0,
+    "metadata_completeness": 1.0,
+    "document_iq": {
+        "document": "UNKNOWN_IEEE_paper.docx",
+        "title": "UNKNOWN_IEEE_paper",
+        "iq_score": 98.55,
+        "grade": "A+",
+        "health": "Excellent",
+        "metrics": {
+            "extraction_score": 23.55,
+            "chunk_score": 20.0,
+            "embedding_score": 20,
+            "ocr_score": 20,
+            "metadata_score": 15.0
+        },
+        "pipeline": {
+            "pages": 1,
+            "chunks": 12,
+            "text_length": 4710,
+            "chunk_density": 12.0,
+            "embedding_status": true,
+            "metadata_completeness": 1.0
+        }
+    }
+}

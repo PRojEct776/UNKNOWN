@@ -1,0 +1,41 @@
+{
+    "document": "unknownnn.docx",
+    "title": "unknownnn",
+    "user_id": "default_user",
+    "is_test_document": false,
+    "document_type": "docx",
+    "document_hash": "29bda8bfbdd75d2a3c97d712e2df8fe2e0219065ae2507d1ada80bf72a56cfef",
+    "pages": 1,
+    "chunks": 12,
+    "text_length": 4828,
+    "estimated_read_time": 24.14,
+    "embedding_status": true,
+    "embedding_status_detail": "verified",
+    "embedding_expected_chunks": 12,
+    "embedding_verified_chunks": 12,
+    "ocr_required": false,
+    "ocr_quality": 1.0,
+    "metadata_completeness": 1.0,
+    "document_iq": {
+        "document": "unknownnn.docx",
+        "title": "unknownnn",
+        "iq_score": 99.14,
+        "grade": "A+",
+        "health": "Excellent",
+        "metrics": {
+            "extraction_score": 24.14,
+            "chunk_score": 20.0,
+            "embedding_score": 20,
+            "ocr_score": 20,
+            "metadata_score": 15.0
+        },
+        "pipeline": {
+            "pages": 1,
+            "chunks": 12,
+            "text_length": 4828,
+            "chunk_density": 12.0,
+            "embedding_status": true,
+            "metadata_completeness": 1.0
+        }
+    }
+}

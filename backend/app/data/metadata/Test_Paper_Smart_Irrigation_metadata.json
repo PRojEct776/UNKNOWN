@@ -1,0 +1,41 @@
+{
+    "document": "Test_Paper_Smart_Irrigation.pdf",
+    "title": "Test_Paper_Smart_Irrigation",
+    "user_id": "default_user",
+    "is_test_document": true,
+    "document_type": "pdf",
+    "document_hash": "4eb30eba6d23b215229eeef0a5b8d617abbea05459ab46092dd7a71f86777043",
+    "pages": 1,
+    "chunks": 1,
+    "text_length": 222,
+    "estimated_read_time": 1.11,
+    "embedding_status": true,
+    "embedding_status_detail": "verified",
+    "embedding_expected_chunks": 1,
+    "embedding_verified_chunks": 1,
+    "ocr_required": false,
+    "ocr_quality": 1.0,
+    "metadata_completeness": 1.0,
+    "document_iq": {
+        "document": "Test_Paper_Smart_Irrigation.pdf",
+        "title": "Test_Paper_Smart_Irrigation",
+        "iq_score": 66.11,
+        "grade": "C",
+        "health": "Fair",
+        "metrics": {
+            "extraction_score": 1.11,
+            "chunk_score": 10.0,
+            "embedding_score": 20,
+            "ocr_score": 20,
+            "metadata_score": 15.0
+        },
+        "pipeline": {
+            "pages": 1,
+            "chunks": 1,
+            "text_length": 222,
+            "chunk_density": 1.0,
+            "embedding_status": true,
+            "metadata_completeness": 1.0
+        }
+    }
+}

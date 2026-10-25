@@ -165,6 +165,10 @@ function getContextAwareExamples(mode: AnalysisMode, docs: string[] = []): strin
 
   // Fallback: general research queries for active tool
   const defaultExamples: Record<AnalysisMode, string[]> = {
+    overview: [
+      'Generate a comprehensive overview of the document structure, abstract, findings, and Document IQ',
+      'Summarize key findings, methodologies, equations, and limitations of this document',
+    ],
     discover: [
       'What are the primary methodologies and empirical findings in the indexed papers?',
       'How do the experimental results validate the core hypothesis?',

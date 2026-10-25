@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-primary: #d2434e;      /* Coral Red */
+    --color-secondary: #a7d0d2;    /* Soft Mint / Seafoam */
+    --color-accent: #4d728e;       /* Slate Blue */
+    --color-navy-deep: #0b1219;    /* Deep Navy Background */
+    --color-navy-surface: #141d26; /* Dark Navy Card */
+    --color-navy-elevated: #1b2734;/* Elevated Navy Card */
+    --color-pale-mint: #f3faf0;    /* Pale Mint Text/Highlights */
+  }
+
+  body {
+    background-color: #0b1219;
+    /* Clean technical grid background */
+    background-image: 
+      radial-gradient(circle at 50% 15%, rgba(210, 67, 78, 0.10), transparent 55%),
+      radial-gradient(circle at 80% 45%, rgba(167, 208, 210, 0.07), transparent 45%),
+      linear-gradient(to right, rgba(167, 208, 210, 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(167, 208, 210, 0.04) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+    background-attachment: fixed;
+    color: #f3faf0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  /* Custom subtle dark scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0b1219;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #141d26;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4d728e;
+  }
+}
+
+/* Card Utility with Picture 1 palette (#141D26 navy surface with #4D728E border) */
+.refire-card {
+  background-color: rgba(20, 29, 38, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(77, 114, 142, 0.35);
+  border-radius: 1rem;
+}
+
+/* Pill Badge */
+.refire-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.95rem;
+  border-radius: 9999px;
+  background-color: rgba(20, 29, 38, 0.9);
+  border: 1px solid rgba(167, 208, 210, 0.25);
+  font-size: 0.75rem;
+  color: #f3faf0;
+  backdrop-filter: blur(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

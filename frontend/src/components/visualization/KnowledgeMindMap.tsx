@@ -261,7 +261,7 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
     try {
       const serializer = new XMLSerializer();
       let source = serializer.serializeToString(svgRef.current);
-      if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+      if (!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) {
         source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
       }
       const title = displayTree?.label || 'concept_mind_map';
@@ -280,7 +280,7 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
     try {
       const serializer = new XMLSerializer();
       let source = serializer.serializeToString(svgRef.current);
-      if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+      if (!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) {
         source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
       }
       const title = displayTree?.label || 'concept_mind_map';

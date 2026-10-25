@@ -120,7 +120,7 @@ ipython_config.py
 
 # pixi
 #   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
-# pixi.lock
+#   pixi.lock
 #   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
 #   in the .venv directory. It is recommended not to include this directory in version control.
 .pixi
@@ -244,7 +244,20 @@ logs/
 # OS temporary files
 .DS_Store
 Thumbs.db
-desktop.inibackend/app/data/history.db
-backend/app/data/trash/
+desktop.ini
+
+# =====================================================
+# UNKNOWN Project Generated Data (History, Cache, Trash, Uploads, Indexes)
+# =====================================================
 backend/app/data/history.db
+backend/app/data/history.db*
 backend/app/data/cache/
+backend/app/data/trash/
+backend/app/data/uploads/
+backend/app/data/indexes/
+app/data/history.db
+app/data/history.db*
+app/data/cache/
+app/data/trash/
+app/data/uploads/
+app/data/indexes/

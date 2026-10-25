@@ -1993,6 +1993,74 @@ def export_result(
         )
 
 
+
+
+# ===========================================================================
+# Task Phase 3: Secure Conversation Sharing Endpoints
+# ===========================================================================
+
+@app.post("/share")
+def create_share_link(
+    payload: dict,
+    request: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+    x_user_id: str | None = Header(None),
+):
+    """Create a revocable, read-only share link for a conversation."""
+    active_user, _ = resolve_authenticated_workspace(
+        request, authorization, x_session_token, x_user_id=x_user_id
+    )
+    from app.services.share_service import create_share
+
+    conv = payload.get("conversation", {})
+    include_docs = payload.get("include_doc_content", False)
+    expires = payload.get("expires_in_hours", 72)
+    return create_share(
+        active_user,
+        conv,
+        include_doc_content=include_docs,
+        expires_in_hours=expires,
+    )
+
+
+@app.get("/share/{token}")
+def get_shared_conversation_link(token: str):
+    """Retrieve a shared conversation using its secure token."""
+    from app.services.share_service import get_shared
+
+    data = get_shared(token)
+    if not data:
+        raise HTTPException(
+            status_code=404,
+            detail="Shared conversation not found, expired, or revoked.",
+        )
+    return data
+
+
+@app.delete("/share/{token}")
+def revoke_shared_conversation_link(
+    token: str,
+    request: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+    x_user_id: str | None = Header(None),
+):
+    """Revoke a shared conversation link."""
+    active_user, _ = resolve_authenticated_workspace(
+        request, authorization, x_session_token, x_user_id=x_user_id
+    )
+    from app.services.share_service import revoke_share
+
+    success = revoke_share(token, active_user)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail="Share token not found or unauthorized.",
+        )
+    return {"status": "revoked", "token": token}
+
+
 @app.get("/", include_in_schema=False)
 async def serve_root():
     """Serve the frontend SPA directly on the root URL."""

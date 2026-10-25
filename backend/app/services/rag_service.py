@@ -215,6 +215,47 @@ class RAGService:
             len(result.comparison),
         )
 
+        # -----------------------------------------------------------
+        # Compute confidence using the accuracy engine (A7)
+        # -----------------------------------------------------------
+        statuses = []
+        if sources:
+            statuses.append("sufficient")
+        else:
+            statuses.append("insufficient")
+
+        # Derive claim-level labels from comparison pairs
+        claims_for_conf: list[dict] = []
+        for cp in comparison_schema:
+            if cp.label == "agree":
+                claims_for_conf.append({"text": cp.sub_question, "label": "supported"})
+            elif cp.label == "disagree":
+                claims_for_conf.append({"text": cp.sub_question, "label": "unsupported"})
+            else:
+                claims_for_conf.append({"text": cp.sub_question, "label": "partial"})
+
+        # Derive conflict objects
+        conflicts_for_conf: list[dict] = []
+        for cp in comparison_schema:
+            if cp.label == "disagree":
+                conflicts_for_conf.append({
+                    "topic": cp.sub_question,
+                    "side_a": cp.doc_quote[:200] if cp.doc_quote else "",
+                    "side_b": cp.web_quote[:200] if cp.web_quote else "",
+                })
+
+        confidence = compute_confidence(
+            statuses=statuses,
+            claims=claims_for_conf if claims_for_conf else None,
+            sources=sources,
+            conflicts=conflicts_for_conf if conflicts_for_conf else None,
+        )
+
+        logger.info(
+            "DualRetriever answer: confidence score=%.1f",
+            confidence.score,
+        )
+
         return AnswerResponse(
             summary=result.summary,
             detail=result.detail,
@@ -223,6 +264,7 @@ class RAGService:
             comparison=comparison_schema,
             sources=sources,
             gaps=result.gaps,
+            confidence=confidence,
         )
 
     def reload_indexes(self):

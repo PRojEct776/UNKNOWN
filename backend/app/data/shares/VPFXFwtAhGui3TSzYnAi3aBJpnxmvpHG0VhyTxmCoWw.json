@@ -1,0 +1,42 @@
+{
+  "token": "VPFXFwtAhGui3TSzYnAi3aBJpnxmvpHG0VhyTxmCoWw",
+  "owner_user_id": "test_researcher_123",
+  "created_at": 1792932364.9877136,
+  "expires_at": 1793018764.9877136,
+  "is_active": false,
+  "conversation": {
+    "title": "Quantum Error Correction Analysis",
+    "createdAt": "2026-10-25T12:00:00Z",
+    "messages": [
+      {
+        "id": "msg_1",
+        "sender": "user",
+        "timestamp": "12:00 PM",
+        "text": "What is the threshold theorem?",
+        "feature": "discover"
+      },
+      {
+        "id": "msg_2",
+        "sender": "assistant",
+        "timestamp": "12:01 PM",
+        "text": null,
+        "feature": "discover",
+        "result": {
+          "answer": "The threshold theorem proves fault-tolerant quantum computation is possible.",
+          "detailedAnswer": "Full mathematical breakdown of fault tolerance thresholds.",
+          "confidence": 0.94,
+          "doc_section": "Document evidence paragraph with citations.",
+          "web_section": null,
+          "sources": [
+            {
+              "title": "Quantum_Computing_Review.pdf",
+              "page": 4,
+              "domain": "arxiv.org",
+              "url": "https://arxiv.org/abs/quant-ph/012345"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -67,7 +67,7 @@ export const BACKEND_URL: string = (
 export const DEFAULT_QUERY_TIMEOUT_MS: number = (() => {
   const raw = import.meta.env.VITE_BACKEND_TIMEOUT_MS as string | undefined;
   const parsed = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed >= 500 ? parsed : 30000;
+  return Number.isFinite(parsed) && parsed >= 500 ? parsed : 120000;
 })();
 
 /** Fast timeout for health checks, pings, and lightweight metadata calls (5s). */
@@ -528,15 +528,22 @@ export function getDocumentDownloadUrl(documentName: string): string {
 export async function queryBackend(
   query: string,
   documentNames?: string[],
+  docOnly: boolean = false,
+  scope?: string,
   signal?: AbortSignal,
 ): Promise<BackendQueryResponse> {
   return apiFetch<BackendQueryResponse>(
-    '/query',
+    '/answer',
     {
       method: 'POST',
-      body: JSON.stringify({ query, document_names: documentNames ?? null }),
+      body: JSON.stringify({
+        query,
+        document_names: documentNames ?? null,
+        doc_only: docOnly,
+        scope: scope ?? null,
+      }),
     },
-    DEFAULT_QUERY_TIMEOUT_MS,
+    Math.max(DEFAULT_QUERY_TIMEOUT_MS, 120_000),
     signal,
   );
 }
@@ -808,6 +815,10 @@ export interface BackendDocumentOverview {
   generated_at: string;
   generation_ms: number;
   from_cache: boolean;
+  executive_summary?: string;
+  main_findings?: string[];
+  methods_and_investigations?: string[];
+  questions_it_can_answer?: string[];
 }
 
 export async function fetchDocumentOverview(
@@ -1044,4 +1055,43 @@ export async function streamSmartQuery(
       }
     }
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// Secure Sharing API
+// ---------------------------------------------------------------------------
+
+export interface ShareResponse {
+  share_token: string;
+  share_url: string;
+  expires_at: number | null;
+  is_active: boolean;
+}
+
+export async function createShareLink(
+  conversation: unknown,
+  includeDocContent: boolean = false,
+  expiresInHours: number = 72,
+): Promise<ShareResponse> {
+  return apiFetch<ShareResponse>('/share', {
+    method: 'POST',
+    body: JSON.stringify({
+      conversation,
+      include_doc_content: includeDocContent,
+      expires_in_hours: expiresInHours,
+    }),
+  });
+}
+
+export async function getSharedConversation(token: string): Promise<unknown> {
+  return apiFetch<unknown>(`/share/${encodeURIComponent(token)}`, {
+    method: 'GET',
+  });
+}
+
+export async function revokeShareLink(token: string): Promise<{ status: string; token: string }> {
+  return apiFetch<{ status: string; token: string }>(`/share/${encodeURIComponent(token)}`, {
+    method: 'DELETE',
+  });
 }

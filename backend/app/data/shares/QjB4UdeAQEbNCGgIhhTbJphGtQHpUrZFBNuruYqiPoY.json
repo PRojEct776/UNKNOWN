@@ -1,0 +1,259 @@
+{
+  "token": "QjB4UdeAQEbNCGgIhhTbJphGtQHpUrZFBNuruYqiPoY",
+  "owner_user_id": "usr_1792916772131",
+  "created_at": 1792933300.7231112,
+  "expires_at": 1793538100.7231112,
+  "is_active": false,
+  "conversation": {
+    "title": "Summarize the selected documen...",
+    "createdAt": "2026-10-25T12:48:52.406Z",
+    "messages": [
+      {
+        "id": "msg_ov_1792932734264",
+        "sender": "overview",
+        "timestamp": "06:22 PM",
+        "text": null,
+        "feature": null
+      },
+      {
+        "id": "msg_ov_1792932748845",
+        "sender": "overview",
+        "timestamp": "06:22 PM",
+        "text": null,
+        "feature": null
+      },
+      {
+        "id": "usr_1792932806990",
+        "sender": "user",
+        "timestamp": "06:23 PM",
+        "text": "Summarize the selected document. Explain its research problem, proposed methodology, key findings, and limitations. Use citations from the uploaded document.",
+        "feature": "discover"
+      },
+      {
+        "id": "asst_1792932819613",
+        "sender": "assistant",
+        "timestamp": "06:23 PM",
+        "text": null,
+        "feature": "discover",
+        "result": {
+          "answer": "Not found in available sources.",
+          "detailedAnswer": "Test Research Paper: IoT-Based Smart Irrigation Purpose This synthetic test paper describes an IoT smart irrigation prototype. It is designed for testing document upload, retrieval, citations, and multi-document comparison. [Source: Test_Paper_Smart_Irrigation.pdf, p.1, \u00a7chunk_71]\n\ncharacteristic time does not mean that the complete file remains almost perfectly recoverable for that duration. Translating generations into elapsed time would additionally require a specified growth and storage regime. [Source: Microbial_DNA_Storage_IEEE.pdf, p.4, \u00a7chunk_37]\n\nB. Genomic copies may fail together Separate copies are treated as independent mutation processes, although copies inside the same genome share inheritance and can be affected by linked events. [Source: Microbial_DNA_Storage_IEEE.pdf, p.5, \u00a7chunk_38]\n\nUploaded 1 document successfully [Uploaded 1 document successfully](https://doi.org/10.30622/tarr.818691) (fetched 2026-10-25)\n\nReview for \"Overton: A bibliometric database of policy document citations\" [Review for \"Overton: A bibliometric database of policy document citations\"](https://doi.org/10.1162/qss_a_00204/v2/review1) (fetched 2026-10-25)\n\nIn machine learning, deep learning (DL) focuses on utilizing multilayered neural networks to perform tasks such as classification, regression, and representation learning. The field takes inspiration from biological neuroscience and revolves around stacking artificial neurons into layers and \"training\" them to process data. [Deep learning](https://en.wikipedia.org/wiki/Deep_learning) (fetched 2026-10-25)",
+          "confidence": null,
+          "doc_section": "Test Research Paper: IoT-Based Smart Irrigation Purpose This synthetic test paper describes an IoT smart irrigation prototype. It is designed for testing document upload, retrieval, citations, and multi-document comparison. [Source: Test_Paper_Smart_Irrigation.pdf, p.1, \u00a7chunk_71]\n\ncharacteristic time does not mean that the complete file remains almost perfectly recoverable for that duration. Translating generations into elapsed time would additionally require a specified growth and storage regime. [Source: Microbial_DNA_Storage_IEEE.pdf, p.4, \u00a7chunk_37]\n\nB. Genomic copies may fail together Separate copies are treated as independent mutation processes, although copies inside the same genome share inheritance and can be affected by linked events. [Source: Microbial_DNA_Storage_IEEE.pdf, p.5, \u00a7chunk_38]",
+          "web_section": "Uploaded 1 document successfully [Uploaded 1 document successfully](https://doi.org/10.30622/tarr.818691) (fetched 2026-10-25)\n\nReview for \"Overton: A bibliometric database of policy document citations\" [Review for \"Overton: A bibliometric database of policy document citations\"](https://doi.org/10.1162/qss_a_00204/v2/review1) (fetched 2026-10-25)\n\nIn machine learning, deep learning (DL) focuses on utilizing multilayered neural networks to perform tasks such as classification, regression, and representation learning. The field takes inspiration from biological neuroscience and revolves around stacking artificial neurons into layers and \"training\" them to process data. [Deep learning](https://en.wikipedia.org/wiki/Deep_learning) (fetched 2026-10-25)",
+          "sources": [
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 5,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 3,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 4,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 1,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 1,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 3,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 4,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 1,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": null,
+              "domain": null,
+              "url": null
+            }
+          ]
+        }
+      },
+      {
+        "id": "msg_ov_1792932961153",
+        "sender": "overview",
+        "timestamp": "06:26 PM",
+        "text": null,
+        "feature": null
+      },
+      {
+        "id": "usr_1792933060118",
+        "sender": "user",
+        "timestamp": "06:27 PM",
+        "text": "Identify five potential research gaps based on this paper. For each gap, explain what the paper establishes, what remains unresolved, and what evidence supports the gap. Label your own deductions as inferences.",
+        "feature": "gaps"
+      },
+      {
+        "id": "asst_1792933068003",
+        "sender": "assistant",
+        "timestamp": "06:27 PM",
+        "text": null,
+        "feature": "gaps",
+        "result": {
+          "answer": "Impact of specific mutation types (substitutions, insertions, deletions, and rearrangements) rather than a single generalized mutated state: The paper establishes that all damaging changes are grouped into one mutated state, leaving unresolved how specific types of mutations uniquely affect the payload, index, or adjacent fragments.",
+          "detailedAnswer": "Actual substitutions, insertions, deletions, and rearrangements can affect a payload differently, and treating every changed fragment as unusable can be pessimistic while assuming perfect error detection can be optimistic.\n\nThe model deliberately reduces a complex biological system to a small set of states, limiting the conclusions to comparing assumptions within the model.\n\nTranslating generations into elapsed time would require a specified growth and storage regime, and analytical extrapolations such as u \u2248 2 \u00d7 10-10 are not simulated observations or guarantees of complete-file recovery.",
+          "confidence": null,
+          "doc_section": null,
+          "web_section": null,
+          "sources": [
+            {
+              "title": "Source",
+              "page": 3,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 4,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 4,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 3,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 1,
+              "domain": null,
+              "url": null
+            }
+          ]
+        }
+      },
+      {
+        "id": "usr_1792933175602",
+        "sender": "user",
+        "timestamp": "06:29 PM",
+        "text": "Create a knowledge mind map of this paper showing its central research problem, objectives, methodology, technical components, findings, limitations, and future work. Every node must be supported by a passage from the document.",
+        "feature": "knowledge-map"
+      },
+      {
+        "id": "asst_1792933181645",
+        "sender": "assistant",
+        "timestamp": "06:29 PM",
+        "text": null,
+        "feature": "knowledge-map",
+        "result": {
+          "answer": "Knowledge mind map constructed with 5 concept nodes and 4 relationships.",
+          "detailedAnswer": "Research Area: Microbial DNA Data Storage and Simulation",
+          "confidence": null,
+          "doc_section": null,
+          "web_section": null,
+          "sources": [
+            {
+              "title": "Source",
+              "page": 1,
+              "domain": null,
+              "url": null
+            },
+            {
+              "title": "Source",
+              "page": 4,
+              "domain": null,
+              "url": null
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

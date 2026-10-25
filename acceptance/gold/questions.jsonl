@@ -1,0 +1,5 @@
+{"id": "q1", "question": "What is the primary challenge of keeping digital information stored in microbial genomes intact across generations?", "document": "Microbial_DNA_Storage_IEEE.pdf", "grounded": true}
+{"id": "q2", "question": "How does the FLANN library select algorithms for high-dimensional nearest neighbor search?", "document": "Scalable_Nearest_Neighbor_Algorithms_for_High_Dimensional_Data (2).pdf", "grounded": true}
+{"id": "q3", "question": "What vision and language transformer architectures are utilized for real-time multimodal emotion recognition?", "document": "A_Deployment_Oriented_Real_Time_Multimodal_Emotion_Recognition_System_using_Vision_Transformer_and_RoBERTa_Based_Models.docx", "grounded": true}
+{"id": "q4", "question": "What are the core stages and features of the UNKNOWN architecture described in the IEEE paper?", "document": "UNKNOWN_IEEE_paper.docx", "grounded": true}
+{"id": "q5", "question": "What are the warp drive propulsion mechanisms used by interstellar starships in Alpha Centauri?", "document": null, "grounded": false}

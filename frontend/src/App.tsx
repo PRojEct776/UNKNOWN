@@ -14,6 +14,7 @@ import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 import { SearchPage } from './pages/SearchPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { SharedConversationPage } from './pages/SharedConversationPage';
 
 const RootRedirect: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -46,28 +47,12 @@ const PublicAuthRoute: React.FC<{
   return <>{children}</>;
 };
 
-const AppLayout: React.FC<{
-  children: React.ReactNode;
-}> = ({ children }) => {
-  return (
-    <div className="min-h-screen flex flex-col bg-[#0c1217] text-[#e6ebef]">
-      <Navbar />
-
-      <main className="flex-1">
-        {children}
-      </main>
-    </div>
-  );
-};
-
 export const App: React.FC = () => {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-
           {/* PUBLIC */}
-
           <Route
             path="/login"
             element={
@@ -86,8 +71,12 @@ export const App: React.FC = () => {
             }
           />
 
-          {/* PROTECTED */}
+          <Route
+            path="/shared/:token"
+            element={<SharedConversationPage />}
+          />
 
+          {/* PROTECTED */}
           <Route
             path="/dashboard"
             element={<Navigate to="/search" replace />}
@@ -102,9 +91,7 @@ export const App: React.FC = () => {
             path="/search"
             element={
               <ProtectedRoute>
-                <AppLayout>
-                  <SearchPage />
-                </AppLayout>
+                <SearchPage />
               </ProtectedRoute>
             }
           />
@@ -113,27 +100,27 @@ export const App: React.FC = () => {
             path="/profile"
             element={
               <ProtectedRoute>
-                <AppLayout>
-                  <ProfilePage />
-                </AppLayout>
+                <div className="min-h-screen flex flex-col bg-[#0c1217] text-[#e6ebef]">
+                  <Navbar />
+                  <main className="flex-1">
+                    <ProfilePage />
+                  </main>
+                </div>
               </ProtectedRoute>
             }
           />
 
           {/* ROOT */}
-
           <Route
             path="/"
             element={<RootRedirect />}
           />
 
           {/* FALLBACK */}
-
           <Route
             path="*"
             element={<Navigate to="/" replace />}
           />
-
         </Routes>
       </BrowserRouter>
     </AuthProvider>
