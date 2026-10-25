@@ -26,6 +26,7 @@ from app.rag.document_eligibility import (
 )
 
 from app.api.schemas import (
+    DocumentOverviewResponse,
     AnswerRequest,
     AnswerResponse,
     AdaptiveAnswerRequest,
@@ -312,6 +313,54 @@ def get_document_detail(
         }
 
 
+
+@app.get("/documents/{document_name}/overview", response_model=DocumentOverviewResponse)
+def get_document_overview(
+    document_name: str,
+    request: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+    x_user_id: str | None = Header(None),
+):
+    """
+    Return (or generate and cache) the full document overview.
+    First call: makes LLM calls, caches result by file hash.
+    Subsequent calls: returns from cache — zero LLM calls.
+    """
+    from app.rag.document_eligibility import get_user_authorized_documents
+    from app.services.overview_service import generate_document_overview
+
+    safe_name = Path(document_name).name
+    active_user, _ = resolve_authenticated_workspace(
+        request, authorization, x_session_token, x_user_id=x_user_id
+    )
+    authorized_docs = get_user_authorized_documents(active_user, include_test_docs=True)
+    if safe_name not in authorized_docs:
+        raise HTTPException(status_code=404, detail=f"Document '{safe_name}' not found")
+
+    paper_path = settings.PAPERS_DIR / safe_name
+    if not paper_path.exists() or not paper_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Document '{safe_name}' not found")
+
+    def _llm_fn(prompt: str, temperature: float = 0.0) -> str:
+        resp = rag_service.llm.generate_grounded(prompt) if temperature == 0.0 else rag_service.llm.generate(prompt)
+        if not resp.success:
+            raise RuntimeError(resp.error or "LLM failed")
+        return resp.answer
+
+    try:
+        overview = generate_document_overview(
+            document_name=safe_name,
+            llm_fn=_llm_fn,
+            retriever=rag_service.retriever,
+        )
+        return DocumentOverviewResponse(**overview)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Overview generation failed for %s", safe_name)
+        raise HTTPException(status_code=500, detail=f"Overview generation failed: {exc}") from exc
+
 @app.get("/documents/download/{document_name}")
 def download_document(
     document_name: str,
@@ -440,6 +489,24 @@ async def upload_document(file: UploadFile = File(...)):
         faiss_builder.build_index()
 
         rag_service.reload_indexes()
+
+        # Generate document overview on upload and cache by document hash
+        try:
+            from app.services.overview_service import generate_document_overview
+
+            def _llm_fn_upload(prompt: str, temperature: float = 0.0) -> str:
+                resp = rag_service.llm.generate_grounded(prompt) if temperature == 0.0 else rag_service.llm.generate(prompt)
+                if not resp.success:
+                    raise RuntimeError(resp.error or "LLM failed")
+                return resp.answer
+
+            generate_document_overview(
+                document_name=file_name,
+                llm_fn=_llm_fn_upload,
+                retriever=rag_service.retriever,
+            )
+        except Exception as o_err:
+            logger.warning("Overview generation on upload warning: %s", o_err)
 
         doc_chunks = sum(1 for c in all_chunks if c.get("document") == file_name)
 

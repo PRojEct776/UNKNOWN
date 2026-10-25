@@ -461,6 +461,19 @@ def purge_derived_artifacts(document_name: str) -> int:
                 except Exception:
                     pass
 
+        # Also purge any hash-keyed overview cache files for this document
+        overview_dir = cache_dir / "overviews"
+        if overview_dir.exists():
+            for p in list(overview_dir.glob("*.json")):
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if data.get("document_name") == safe_name or data.get("title") == stem:
+                        p.unlink(missing_ok=True)
+                        deleted_count += 1
+                except Exception:
+                    pass
+
     delete_history_for_document(safe_name)
     return deleted_count
 

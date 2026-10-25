@@ -603,3 +603,63 @@ class QueryAssistantResponse(BaseModel):
     explanation: str
     alternative_queries: list[str]
     tips: list[str]
+
+
+class OverviewSentence(BaseModel):
+    """A single grounded summary sentence with page reference."""
+
+    text: str
+    source_ids: list[int] = Field(default_factory=list)
+    quote: str = ""
+    page_ref: str = "N/A"
+
+
+class DocumentIQReport(BaseModel):
+    """Scores from the Document IQ engine."""
+
+    iq_score: float = 0.0
+    grade: str = "N/A"
+    extraction_score: float = 0.0
+    chunk_score: float = 0.0
+    embedding_score: float = 0.0
+    ocr_score: float = 0.0
+    metadata_score: float = 0.0
+
+
+class FigureDetail(BaseModel):
+    id: str
+    label: str
+    caption: str = ""
+    page: int | str = 1
+    thumbnail: str = ""
+
+
+class TableDetail(BaseModel):
+    id: str
+    label: str
+    caption: str = ""
+    page: int | str = 1
+    thumbnail: str = ""
+
+
+class DocumentOverviewResponse(BaseModel):
+    """Rich document overview returned by GET /documents/{name}/overview."""
+
+    document_name: str
+    document_hash: str = ""
+    title: str
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = None
+    page_count: int = 1
+    language: str = "en"
+    figure_count: int = 0
+    table_count: int = 0
+    figures: list[FigureDetail] = Field(default_factory=list)
+    tables: list[TableDetail] = Field(default_factory=list)
+    summary_sentences: list[OverviewSentence] = Field(default_factory=list)
+    key_topics: list[str] = Field(default_factory=list)
+    document_iq: dict = Field(default_factory=dict)
+    suggested_questions: list[str] = Field(default_factory=list)
+    generated_at: str = ""
+    generation_ms: float = 0.0
+    from_cache: bool = False

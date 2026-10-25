@@ -742,3 +742,68 @@ export async function clearAllHistory(filters?: { user?: string; workspace?: str
     method: 'DELETE',
   });
 }
+
+
+// ---------------------------------------------------------------------------
+// API functions — Document Overview (Task P1-4)
+// ---------------------------------------------------------------------------
+
+export interface OverviewSentence {
+  text: string;
+  source_ids: number[];
+  quote: string;
+  page_ref: string;
+}
+
+export interface OverviewFigureDetail {
+  id: string;
+  label: string;
+  caption: string;
+  page: number | string;
+  thumbnail: string;
+}
+
+export interface OverviewTableDetail {
+  id: string;
+  label: string;
+  caption: string;
+  page: number | string;
+  thumbnail: string;
+}
+
+export interface BackendDocumentOverview {
+  document_name: string;
+  document_hash: string;
+  title: string;
+  authors: string[];
+  year: number | null;
+  page_count: number;
+  language: string;
+  figure_count: number;
+  table_count: number;
+  figures: OverviewFigureDetail[];
+  tables: OverviewTableDetail[];
+  summary_sentences: OverviewSentence[];
+  key_topics: string[];
+  document_iq: {
+    iq_score?: number;
+    grade?: string;
+    extraction_score?: number;
+    chunk_score?: number;
+    embedding_score?: number;
+    ocr_score?: number;
+    metadata_score?: number;
+  };
+  suggested_questions: string[];
+  generated_at: string;
+  generation_ms: number;
+  from_cache: boolean;
+}
+
+export async function fetchDocumentOverview(
+  documentName: string,
+): Promise<BackendDocumentOverview> {
+  return apiFetch<BackendDocumentOverview>(
+    `/documents/${encodeURIComponent(documentName)}/overview`,
+  );
+}
