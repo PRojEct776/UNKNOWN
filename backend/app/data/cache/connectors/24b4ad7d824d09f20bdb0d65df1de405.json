@@ -1,0 +1,18 @@
+{
+  "stored_at": 1792867495.3178248,
+  "chunks": [
+    {
+      "id": "wikipedia:43870201008bf184",
+      "text": "Quantum teleportation is a technique for transferring quantum information from a sender at one location to a receiver some distance away. While teleportation is commonly portrayed in science fiction as a means to transfer physical objects from one location to the next, quantum teleportation only transfers quantum information. The sender does not have to know the particular quantum state being transferred. Moreover, the location of the recipient can be unknown, but to complete the quantum teleportation, classical information needs to be sent from sender to receiver. Because classical information needs to be sent, quantum teleportation cannot occur faster than the speed of light.",
+      "title": "Quantum teleportation",
+      "authors": [],
+      "year": null,
+      "venue": "Wikipedia",
+      "doi": null,
+      "url": "https://en.wikipedia.org/wiki/Quantum_teleportation",
+      "origin": "web",
+      "retrieved_at": "2026-10-24T18:44:55.317458+00:00",
+      "content_hash": "7d7eaed8240764f6b54e4e367c09aeda50dd1c116d2120553fd26d7d5750d345"
+    }
+  ]
+}

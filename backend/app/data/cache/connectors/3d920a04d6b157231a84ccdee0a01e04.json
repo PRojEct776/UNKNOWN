@@ -1,0 +1,25 @@
+{
+  "stored_at": 1792867498.1457272,
+  "chunks": [
+    {
+      "id": "openalex:e815663b1898b315",
+      "text": "Experimental quantum teleportation",
+      "title": "Experimental quantum teleportation",
+      "authors": [
+        "Dik Bouwmeester",
+        "Jian-Wei Pan",
+        "Klaus Mattle",
+        "Manfred Eibl",
+        "Harald Weinfurter",
+        "Anton Zeilinger"
+      ],
+      "year": 1997,
+      "venue": "Nature",
+      "doi": "10.1038/37539",
+      "url": "https://doi.org/10.1038/37539",
+      "origin": "scholarly",
+      "retrieved_at": "2026-10-24T18:44:58.145543+00:00",
+      "content_hash": "1ff0559ef1378e7b037ba5cfaa106e920c27a8d919fbb11878e79ba4417a0206"
+    }
+  ]
+}

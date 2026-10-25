@@ -1,0 +1,20 @@
+{
+  "stored_at": 1792867498.6973667,
+  "chunks": [
+    {
+      "id": "arxiv:0e88768bda48fa39",
+      "text": "Teleporting physical quantities to remote locations is a remaining key challenge for quantum information science and technology. Quantum teleportation has enabled the transfer of quantum information, but teleportation of quantum physical quantities has not yet been realized. Here we report the realization and observation of quantum energy teleportation on real superconducting quantum hardware. We achieve this by using several IBM's superconducting quantum computers. The results are consistent with the exact solution of the theory and are improved by the mitigation of measurement error. Quantum energy teleportation requires only local operations and classical communication. Therefore our results provide a realistic benchmark that is fully achievable with current quantum computing and communication technologies.",
+      "title": "Demonstration of Quantum Energy Teleportation on Superconducting Quantum Hardware",
+      "authors": [
+        "Kazuki Ikeda"
+      ],
+      "year": 2023,
+      "venue": "Phys. Rev. Applied 20, 024051, 2023",
+      "doi": "10.1103/PhysRevApplied.20.024051",
+      "url": "https://arxiv.org/abs/2301.02666",
+      "origin": "scholarly",
+      "retrieved_at": "2026-10-24T18:44:58.697233+00:00",
+      "content_hash": "50e73933b350cc1e0d96860596d4e6ede612197dbbc73d938fdf1bd33b69b256"
+    }
+  ]
+}
