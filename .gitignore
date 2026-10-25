@@ -247,3 +247,4 @@ Thumbs.db
 desktop.inibackend/app/data/history.db
 backend/app/data/trash/
 backend/app/data/history.db
+backend/app/data/cache/
