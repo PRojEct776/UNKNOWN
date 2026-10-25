@@ -1,0 +1,74 @@
+{
+  "document_name": "duplicate_test_doc.txt",
+  "document_hash": "32438c2d36b33f958896fd24ccfd09f43a364b44b25769cc3f8e3108ce9f47a3",
+  "title": "duplicate_test_doc",
+  "authors": [],
+  "year": null,
+  "page_count": 1,
+  "language": "en",
+  "figure_count": 1,
+  "table_count": 1,
+  "figures": [
+    {
+      "id": "fig_1",
+      "label": "Figure 1",
+      "caption": "Visual Architecture / Experimental Workflow 1",
+      "page": 1,
+      "thumbnail": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" height=\"100\" viewBox=\"0 0 160 100\"><rect width=\"160\" height=\"100\" fill=\"%23141d26\" rx=\"8\" stroke=\"%23d2434e\" stroke-width=\"1.5\"/><path d=\"M20 70 L50 40 L80 65 L110 30 L140 70\" fill=\"none\" stroke=\"%23d2434e\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"110\" cy=\"30\" r=\"3\" fill=\"%23d2434e\"/><text x=\"80\" y=\"88\" fill=\"%23f3faf0\" font-family=\"sans-serif\" font-size=\"10\" font-weight=\"bold\" text-anchor=\"middle\">Figure%201</text></svg>"
+    }
+  ],
+  "tables": [
+    {
+      "id": "tbl_1",
+      "label": "Table 1",
+      "caption": "Benchmark Performance / Quantitative Data 1",
+      "page": 1,
+      "thumbnail": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" height=\"100\" viewBox=\"0 0 160 100\"><rect width=\"160\" height=\"100\" fill=\"%23141d26\" rx=\"8\" stroke=\"%23a7d0d2\" stroke-width=\"1.5\"/><path d=\"M20 70 L50 40 L80 65 L110 30 L140 70\" fill=\"none\" stroke=\"%23a7d0d2\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"110\" cy=\"30\" r=\"3\" fill=\"%23a7d0d2\"/><text x=\"80\" y=\"88\" fill=\"%23f3faf0\" font-family=\"sans-serif\" font-size=\"10\" font-weight=\"bold\" text-anchor=\"middle\">Table%201</text></svg>"
+    }
+  ],
+  "summary_sentences": [
+    {
+      "text": "Unique content for duplicate upload verification in test suite.",
+      "source_ids": [
+        1
+      ],
+      "quote": "Unique content for duplicate upload verification in test suite.",
+      "page_ref": "Page 1"
+    }
+  ],
+  "key_topics": [
+    "Unique"
+  ],
+  "document_iq": {
+    "document": "duplicate_test_doc.txt",
+    "title": "duplicate_test_doc",
+    "iq_score": 65.05,
+    "grade": "C",
+    "health": "Fair",
+    "metrics": {
+      "extraction_score": 0.04,
+      "chunk_score": 10.0,
+      "embedding_score": 20,
+      "ocr_score": 20,
+      "metadata_score": 15.0
+    },
+    "pipeline": {
+      "pages": 1,
+      "chunks": 1,
+      "text_length": 9,
+      "chunk_density": 1.0,
+      "embedding_status": true,
+      "metadata_completeness": 1.0
+    }
+  },
+  "suggested_questions": [
+    "What is the specific purpose of the unique content in this document within the test suite?",
+    "How does the system verify duplicate uploads using this document?",
+    "What criteria are used to determine if an uploaded document is considered a duplicate?",
+    "Why is duplicate upload verification necessary for the stability or performance of the test suite?",
+    "Can this duplicate verification mechanism be integrated into broader document management pipelines?"
+  ],
+  "generated_at": "2026-10-25T08:20:58Z",
+  "generation_ms": 4861.6,
+  "from_cache": true
+}

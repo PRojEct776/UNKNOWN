@@ -1,0 +1,64 @@
+{
+  "document": "Microbial_DNA_Storage_IEEE.pdf",
+  "concepts": [
+    "Digital Data Storage in DNA",
+    "In Vivo Data Persistence",
+    "Mutational Degradation",
+    "Sequence Redundancy",
+    "Sequencing Depth Optimization"
+  ],
+  "entities": [
+    {
+      "name": "Neutral Model Simulation",
+      "type": "Algorithm",
+      "page": 3
+    },
+    {
+      "name": "Simplified Decoder",
+      "type": "Algorithm",
+      "page": 2
+    }
+  ],
+  "methods": [
+    "Statistical simulation of microbial DNA data decay",
+    "Multiple-copy redundancy encoding (R-location repetition)",
+    "Intact vs. mutant consensus decoding",
+    "Generation-checkpoint failure analysis"
+  ],
+  "claims": [
+    "Repetition reduces the risk of block loss but increases the total number of inserted bases and lowers nominal payload density.",
+    "Increasing genomic redundancy to two copies with ten reads per copy achieves a mean recovery accuracy of 0.990 over extended generations.",
+    "Selection favoring mutated variants drastically accelerates payload loss relative to neutral evolutionary benchmarks."
+  ],
+  "difficulty": "Intermediate",
+  "novelty": "Substantial Innovation",
+  "summary": "This study uses statistical simulations to evaluate the long-term reliability and physical payload cost of storing digital data within living microbial genomes subject to evolutionary mutation and selection.",
+  "sources": [
+    {
+      "document": "Microbial_DNA_Storage_IEEE.pdf",
+      "page": 1,
+      "chunk_id": "chunk_30"
+    },
+    {
+      "document": "Microbial_DNA_Storage_IEEE.pdf",
+      "page": 1,
+      "chunk_id": "chunk_31"
+    },
+    {
+      "document": "Microbial_DNA_Storage_IEEE.pdf",
+      "page": 2,
+      "chunk_id": "chunk_32"
+    },
+    {
+      "document": "Microbial_DNA_Storage_IEEE.pdf",
+      "page": 2,
+      "chunk_id": "chunk_33"
+    },
+    {
+      "document": "Microbial_DNA_Storage_IEEE.pdf",
+      "page": 3,
+      "chunk_id": "chunk_34"
+    }
+  ],
+  "from_cache": false
+}
