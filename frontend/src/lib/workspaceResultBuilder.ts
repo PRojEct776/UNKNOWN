@@ -122,8 +122,13 @@ export function buildResultFromQueryResponse(
   res: BackendQueryResponse,
 ): WorkspaceResult {
   const base = createBaseWorkspaceResult(query, 'discover');
-  const answerText = res.answer?.trim() || 'Not found in available sources.';
-  const isInsufficient = !res.answer?.trim() || res.answer.includes('Not found in available sources');
+  const NOT_FOUND = 'Not found in available sources.';
+  const pick = [res.answer, res.detail, res.doc_section, res.summary]
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .find((v) => v.length > 0);
+  const answerText = pick || NOT_FOUND;
+  const isInsufficient =
+    !pick || pick === NOT_FOUND || pick === 'Not found in available sources';
 
   return {
     ...base,

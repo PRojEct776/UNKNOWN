@@ -210,9 +210,13 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
   // 3. Render Assistant Message
   const result = message.result;
+  const answerText = (result?.answer || '').trim();
+  const isOffTopic = answerText.includes("doesn't relate to your documents");
   const isInsufficient =
-    result?.answerState === 'insufficient_evidence' ||
-    (result?.answer && result.answer.includes('Not found in available sources'));
+    !isOffTopic &&
+    (result?.answerState === 'insufficient_evidence' ||
+      answerText === 'Not found in available sources.' ||
+      answerText === 'Not found in available sources');
 
   const handleCopy = () => {
     if (!result?.answer) return;
@@ -312,7 +316,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               </div>
               <p className="text-[#f3faf0]/80 leading-relaxed">
                 The requested query could not be verified or substantiated from the currently selected documents.
-                No facts were fabricated. Consider enabling Web Evidence or selecting additional relevant papers.
+                No facts were fabricated. Try rephrasing the question or selecting additional relevant documents.
               </p>
             </div>
           )}

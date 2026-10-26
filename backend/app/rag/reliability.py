@@ -24,6 +24,7 @@ import os
 import re
 from datetime import datetime, timezone
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from app.api.schemas import Conflict
 from app.rag.atomic_claims import classify_nli
@@ -123,6 +124,38 @@ def is_retracted_source(source: dict | Any) -> bool:
     return False
 
 
+_HOST_RE = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$")
+
+WEB_DEFAULT_QUALITY: float = 0.50
+
+WEB_DOMAIN_QUALITY: dict[str, float] = {
+    "nature.com": 1.00,
+    "science.org": 1.00,
+    "cell.com": 1.00,
+    "thelancet.com": 1.00,
+    "nejm.org": 1.00,
+    "jamanetwork.com": 1.00,
+    "pnas.org": 0.95,
+    "ieee.org": 0.85,
+    "acm.org": 0.85,
+    "springer.com": 0.80,
+    "sciencedirect.com": 0.80,
+    "wiley.com": 0.80,
+    "plos.org": 0.80,
+    "oup.com": 0.80,
+    "cambridge.org": 0.80,
+}
+
+
+def _host_quality(host: str) -> float:
+    parts = host.split(".")
+    for i in range(len(parts) - 1):
+        score = WEB_DOMAIN_QUALITY.get(".".join(parts[i:]))
+        if score is not None:
+            return score
+    return WEB_DEFAULT_QUALITY
+
+
 def get_venue_quality(
     venue: str | None,
     origin: str | None = None,
@@ -134,6 +167,8 @@ def get_venue_quality(
         return VENUE_QUALITY_MAP["preprint"]
 
     v_str = (venue or "").strip().lower()
+    if (origin or "").strip().lower() == "web" and _HOST_RE.match(v_str):
+        return _host_quality(v_str)
     if v_str:
         for k, score in VENUE_QUALITY_MAP.items():
             if k in v_str:
@@ -143,6 +178,17 @@ def get_venue_quality(
     orig = (origin or "").strip().lower()
     if orig in VENUE_QUALITY_MAP:
         return VENUE_QUALITY_MAP[orig]
+
+    for candidate in (url, origin):
+        if not candidate:
+            continue
+        try:
+            parsed = urlsplit(candidate if "://" in candidate else f"//{candidate}")
+            host = (parsed.hostname or "").lower().rstrip(".")
+        except ValueError:
+            continue
+        if _HOST_RE.fullmatch(host):
+            return _host_quality(host)
 
     return 0.60  # Default document quality
 

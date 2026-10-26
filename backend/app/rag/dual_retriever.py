@@ -685,6 +685,49 @@ def _build_comparison(
 # Main dual-retrieve entry point
 # ---------------------------------------------------------------------------
 
+import os
+import re
+
+MIN_DOC_RELEVANCE = float(os.environ.get("MIN_DOC_RELEVANCE", "-6.0"))
+NO_MATCH_MESSAGE = "This question doesn't relate to your documents."
+_META_RE = re.compile(
+    r"\b(summar(?:y|ize|ise)|overview|key (?:points|takeaways)|main (?:points|findings|idea)"
+    r"|(?:this|the) (?:document|paper|file|pdf)|what is .{0,40} about)\b",
+    re.I,
+)
+
+
+def _top_reranker_score(chunks):
+    scores = [c["reranker_score"] for c in chunks
+              if isinstance(c.get("reranker_score"), (int, float))]
+    return max(scores) if scores else None
+
+
+_ID_RE = re.compile(r"[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)+")
+
+
+def _has_identifier_hit(query, chunks):
+    ids = [t.lower() for t in _ID_RE.findall(query) if any(ch.isdigit() for ch in t)]
+    if not ids:
+        return False
+    for c in chunks:
+        text = str(c.get("text", "")).lower()
+        if any(i in text for i in ids):
+            return True
+    return False
+
+
+def _is_off_topic(query, chunks):
+    top = _top_reranker_score(chunks)
+    if top is None:
+        return False
+    if _META_RE.search(query):
+        return False
+    if _has_identifier_hit(query, chunks):
+        return False
+    return top < MIN_DOC_RELEVANCE
+
+
 class DualRetriever:
     """
     Orchestrates dual retrieval (document + web) for a query, respecting scope.
@@ -750,6 +793,21 @@ class DualRetriever:
         logger.info(
             "DualRetriever: %d doc chunks retrieved for %r", len(doc_chunks), query[:60]
         )
+
+        top = _top_reranker_score(doc_chunks)
+        logger.info("DualRetriever gate: top reranker_score=%s threshold=%s", top, MIN_DOC_RELEVANCE)
+        if _is_off_topic(query, doc_chunks):
+            return DualResult(
+                query=query,
+                doc_section=NO_MATCH_MESSAGE,
+                web_section=None,
+                comparison=[],
+                summary=NO_MATCH_MESSAGE,
+                detail=NO_MATCH_MESSAGE,
+                doc_sources=[],
+                web_sources=[],
+                gaps=[],
+            )
 
         # 2. Web retrieval (unless doc_only)
         web_chunks: list[dict] = []

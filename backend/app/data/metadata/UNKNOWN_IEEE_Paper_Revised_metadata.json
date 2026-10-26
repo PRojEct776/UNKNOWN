@@ -1,0 +1,116 @@
+{
+    "document": "UNKNOWN_IEEE_Paper_Revised.docx",
+    "title": "UNKNOWN_IEEE_Paper_Revised",
+    "user_id": "default_user",
+    "is_test_document": false,
+    "document_type": "docx",
+    "document_hash": "b963332f63a2650429d953f1b419937e254075e1a868f4c2cebcc517ad184894",
+    "pages": 1,
+    "chunks": 0,
+    "text_length": 7937,
+    "estimated_read_time": 39.69,
+    "embedding_status": false,
+    "embedding_status_detail": "no_chunks",
+    "embedding_expected_chunks": 0,
+    "embedding_verified_chunks": 0,
+    "ocr_required": false,
+    "ocr_quality": 1.0,
+    "ocr_basis": "page_text_coverage",
+    "metadata_completeness": 0.86,
+    "document_iq": {
+        "document": "UNKNOWN_IEEE_Paper_Revised.docx",
+        "title": "UNKNOWN_IEEE_Paper_Revised",
+        "iq_score": 57.9,
+        "max_score": 100,
+        "grade": "D",
+        "health": "Poor",
+        "metrics": {
+            "extraction_score": 25.0,
+            "chunk_score": 0,
+            "embedding_score": 0,
+            "ocr_score": 20,
+            "metadata_score": 12.9
+        },
+        "components": {
+            "extraction": {
+                "score": 25.0,
+                "max_score": 25,
+                "basis": "measured",
+                "how_calculated": "Words extracted ÷ 5,000, capped at 1, × 25.",
+                "inputs": {
+                    "words": 7937
+                },
+                "note": "Measures how much text was extracted (volume). It does not judge whether the text is correct, and short documents score lower regardless of quality."
+            },
+            "chunk_coverage": {
+                "score": 0,
+                "max_score": 20,
+                "basis": "measured",
+                "how_calculated": "Chunks per page ÷ 2 (target density), capped at 1, × 20.",
+                "inputs": {
+                    "pages": 1,
+                    "chunks": 0,
+                    "chunks_per_page": 0.0
+                },
+                "note": null
+            },
+            "embedding": {
+                "score": 0,
+                "max_score": 20,
+                "basis": "measured",
+                "how_calculated": "20 points only if the FAISS index covers every chunk of this document (verified chunk IDs match); otherwise 0.",
+                "inputs": {
+                    "embedding_status": false,
+                    "verification": "no_chunks"
+                },
+                "note": null
+            },
+            "ocr_text_quality": {
+                "score": 20,
+                "max_score": 20,
+                "basis": "measured",
+                "how_calculated": "If every page has extractable text: full 20 points. If some pages are empty: (share of pages with text) × 20.",
+                "inputs": {
+                    "ocr_required": false,
+                    "text_coverage": 1.0,
+                    "ocr_basis": "page_text_coverage"
+                },
+                "note": "This is a text-coverage proxy, not an OCR confidence score."
+            },
+            "metadata_completeness": {
+                "score": 12.9,
+                "max_score": 15,
+                "basis": "measured",
+                "how_calculated": "Share of 7 pipeline checks present (title, source file, document hash, total pages, total words, read time, chunks exist) × 15.",
+                "inputs": {
+                    "completeness": 0.86
+                },
+                "note": "Counts pipeline fields only. It does not check authors, year or DOI."
+            }
+        },
+        "score_basis": {
+            "measured": [
+                "extraction",
+                "chunk_coverage",
+                "embedding",
+                "ocr_text_quality",
+                "metadata_completeness"
+            ],
+            "assumed": [],
+            "unavailable": []
+        },
+        "points_without_direct_measurement": 0.0,
+        "pipeline": {
+            "pages": 1,
+            "chunks": 0,
+            "text_length": 7937,
+            "chunk_density": 0.0,
+            "embedding_status": false,
+            "embedding_status_detail": "no_chunks",
+            "metadata_completeness": 0.86,
+            "ocr_required": false,
+            "ocr_quality": 1.0,
+            "ocr_basis": "page_text_coverage"
+        }
+    }
+}

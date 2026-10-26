@@ -1,0 +1,25 @@
+{
+    "title": "UNKNOWN_RAG_Test_Document",
+    "source_file": "UNKNOWN_RAG_Test_Document.pdf",
+    "document_type": ".pdf",
+    "document_hash": "eadce46746d922072212d42e9e24d165407ae13a340ac25ad44861f83a3b043e",
+    "total_pages": 2,
+    "total_words": 527,
+    "estimated_read_time": 2.63,
+    "pages": [
+        {
+            "page_number": 1,
+            "word_count": 324,
+            "reading_time_minutes": 1.62,
+            "page_hash": "8cdb8f771d5c21d7a957d151d1eea3d52ba1f1a5b99301f5f57a42845e1ad8ff",
+            "text": "UNKNOWN RAG test fixture — synthetic data Page 1 UNKNOWN — RAG Retrieval Test Document Purpose: a small, controlled document for testing document ingestion, chunking, keyword retrieval, semantic retrieval, hybrid ranking, context assembly, and answer grounding. Test-fixture note: The facts below are synthetic and created only for software testing. Do not treat them as real-world research findings. 1. Project profile The fictional project is called Blue Lantern Pantry. Its goal is to monitor pantry supplies and warn a user when an item is running low. The prototype uses an ESP32 controller, a load cell, and an HX711 amplifier. A barcode scan can associate a measured item with a product record. The demo stores inventory events in a cloud database and sends a notification when a configured threshold is crossed. 2. Exact facts for retrieval Field Synthetic value Project code BLP-204 Prototype location Lab Cedar, shelf 3 Controller ESP32-WROOM-32 Load-cell amplifier HX711 Low-stock threshold 250 grams Event collection pantry_events_v2 Notification retry limit 3 attempts Evaluation date 18 October 2026 Test batch identifier QZ-7319 3. Retrieval rules Rule R1: An item is considered low-stock when its measured weight is strictly below 250 grams. A measurement equal to 250 grams does not trigger the low-stock warning. Rule R2: The system makes at most three notification attempts per event. Rule R3: A barcode identifies a product record, but it does not by itself prove the current weight. Rule R4: If the weight sensor returns an invalid reading, the system records the event as measurement_unknown and must not claim that the item is empty. 4. Multilingual and symbol samples Greek sample: α + β = γ · Ω; π = 3.14159; Σ = 100; λ = 0.5; θ = 45°. Hindi sample: \u0000\u0000\u0000\u0000\u0000\u0000! \u0000\u0000 \u0000\u0000\u0000\u0000\u0000\u0000\u0000 \u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000 \u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000 \u0000\u0000 \u0000\u0000\u0000\u0000\u0000\u0000\u0000-\u0000\u0000\u0000\u0000\u0000\u0000 \u0000\u0000\u0000\u0000\u0000\u0000\u0000 \u0000\u0000 \u0000\u0000\u0000\u0000 \u0000\u0000 \u0000\u0000\u0000 \u0000\u0000\u0000\u0000\u0000 \u0000\u0000\u0000 \u0000\u0000. Identifier sample: BLP-204 / QZ-7319 / pantry_events_v2. These exact strings should remain searchable without changing underscores or hyphens. 5. Boundary condition test"
+        },
+        {
+            "page_number": 2,
+            "word_count": 203,
+            "reading_time_minutes": 1.01,
+            "page_hash": "00b938f0fba972aff736fae0220e64796f41efd2576ce8b657a6f005afc8b319",
+            "text": "UNKNOWN RAG test fixture — synthetic data Page 2 The warning fires only when weight is less than 250 grams. Therefore, 249 grams triggers a warning, 250 grams does not, and 251 grams does not. 6. Evidence boundary This document does not specify battery capacity, production accuracy, model latency, cloud cost, or real-world user outcomes. If asked for any of those values, the correct response is: Not specified in the test document. The retrieval system should not invent values. 7. Suggested test questions 1. What is the project code? 2. Which controller and load-cell amplifier are used? 3. What exact collection stores inventory events? 4. Does a 250-gram reading trigger a warning? Explain the boundary. 5. How many notification attempts are allowed? 6. What should happen when the sensor reading is invalid? 7. What does the Hindi sample demonstrate? 8. What is the test batch identifier? 9. What is the production accuracy of the system? 10. At 249 grams, should the warning fire? Recommended evaluation: upload this PDF, confirm ingestion succeeds, ask questions 1–10, inspect retrieved chunks and citations if available, then compare answers with the exact facts above. Question 9 tests abstention: a grounded system should say the value is not specified."
+        }
+    ]
+}
