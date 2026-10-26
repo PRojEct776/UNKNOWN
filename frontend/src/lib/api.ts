@@ -770,6 +770,8 @@ export interface OverviewSentence {
   source_ids: number[];
   quote: string;
   page_ref: string;
+  // "grounded" | "extractive": how the sentence is supported by retrieved text.
+  support?: string;
 }
 
 export interface OverviewFigureDetail {
@@ -778,6 +780,7 @@ export interface OverviewFigureDetail {
   caption: string;
   page: number | string;
   thumbnail: string;
+  thumbnail_is_placeholder?: boolean;
 }
 
 export interface OverviewTableDetail {
@@ -786,6 +789,7 @@ export interface OverviewTableDetail {
   caption: string;
   page: number | string;
   thumbnail: string;
+  thumbnail_is_placeholder?: boolean;
 }
 
 export interface BackendDocumentOverview {
@@ -810,8 +814,18 @@ export interface BackendDocumentOverview {
     embedding_score?: number;
     ocr_score?: number;
     metadata_score?: number;
+    max_score?: number;
+    score_basis?: string;
+    points_without_direct_measurement?: number;
+    // Per-component basis is measured | assumed | unavailable (exact shape not yet typed).
+    components?: unknown;
   };
   suggested_questions: string[];
+  question_details?: Array<{ text: string; type: string }>;
+  section_status?: Record<
+    string,
+    { status: string; error?: string | null; detail?: string | null }
+  >;
   generated_at: string;
   generation_ms: number;
   from_cache: boolean;
@@ -868,7 +882,8 @@ export async function fetchFeedbackRecords(): Promise<FeedbackResponse[]> {
 
 export interface BackendConceptSource {
   document: string;
-  page: number | string;
+  // null when the page is unknown. Never substitute a guessed page.
+  page: number | string | null;
   chunk_id: string;
   passage?: string;
 }

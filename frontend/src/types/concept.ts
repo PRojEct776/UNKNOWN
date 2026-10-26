@@ -8,7 +8,8 @@ export interface ConceptResult {
   usedIn: string[];
   functions: string[];
   relatedConcepts: string[];
-  confidenceScore: number;
+  // Not measured by the backend: leave unset instead of inventing a value.
+  confidenceScore?: number | null;
   graphNodes: GraphNode[];
   graphEdges: GraphEdge[];
 }

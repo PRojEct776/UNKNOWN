@@ -45,7 +45,7 @@ export function mapBackendEvidence(sources: BackendQuerySource[]): Evidence[] {
     documentName: s.document || 'Document Evidence',
     page: typeof s.page === 'number' ? s.page : Number(s.page) || undefined,
     chunkId: s.chunk_id,
-    text: `Retrieved chunk ${s.chunk_id} from ${s.document} (Rank #${s.rank ?? idx + 1})`,
+    text: 'Passage text was not returned by the backend for this source.',
     score: typeof s.hybrid_score === 'number' ? s.hybrid_score : undefined,
     relevance: typeof s.hybrid_score === 'number' ? s.hybrid_score : undefined,
   }));
@@ -73,7 +73,6 @@ export function createBaseWorkspaceResult(query: string, mode: AnalysisMode): Wo
       usedIn: [],
       functions: [],
       relatedConcepts: [],
-      confidenceScore: 0.9,
       graphNodes: [],
       graphEdges: [],
     },

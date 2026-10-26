@@ -249,7 +249,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
             detailed_answer: result.detailedAnswer,
             doc_section: result.doc_section || undefined,
             web_section: result.web_section || undefined,
-            confidence: typeof result.confidence === 'number' ? result.confidence : 0.85,
+            confidence: result.confidence ?? undefined,
             sources: result.sources.map((s) => ({
               document: s.documentName,
               page: s.page,
