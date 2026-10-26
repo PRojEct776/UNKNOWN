@@ -371,6 +371,23 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
             </div>
           )}
 
+          {/* Retrieval notes: failed, timed-out or empty sources */}
+          {result?.gaps && result.gaps.length > 0 && (
+            <div
+              className="rounded-xl border border-amber-400/25 bg-amber-500/5 p-3 text-xs space-y-1"
+              data-testid="retrieval-gaps"
+            >
+              <div className="font-semibold text-amber-300 uppercase font-mono text-[11px]">
+                Retrieval notes
+              </div>
+              <ul className="list-disc pl-4 text-[#f3faf0]/80 leading-relaxed">
+                {result.gaps.map((gap, i) => (
+                  <li key={i}>{gap}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Feature Specific Rich Panels */}
           {/* Reason timeline */}
           {result?.reasoning && result.reasoning.steps && result.reasoning.steps.length > 0 && (
