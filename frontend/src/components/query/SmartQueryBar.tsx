@@ -360,7 +360,7 @@ export const SmartQueryBar: React.FC<SmartQueryBarProps> = ({
               <span>Running All Analyses in Parallel...</span>
             </span>
             <div className="flex items-center gap-3">
-              <span className="font-mono text-[11px] text-[#a7d0d2]">{overallProgress}% Complete</span>
+              <span className="font-mono text-[11px] text-[#a7d0d2]">{overallProgress}% processed</span>
               <button
                 type="button"
                 onClick={handleCancel}
