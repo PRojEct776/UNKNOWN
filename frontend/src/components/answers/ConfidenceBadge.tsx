@@ -44,10 +44,10 @@ export const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({ confidence, va
         data-testid="confidence-badge"
         aria-expanded={isOpen}
         aria-haspopup="dialog"
-        title="Click to view confidence breakdown"
+        title="Click to see what this score does and does not measure"
       >
         <Gauge className="h-3.5 w-3.5" aria-hidden="true" />
-        <span>Confidence {score}%</span>
+        <span>Evidence score {score}%</span>
         {isOpen ? (
           <ChevronUp className="h-3 w-3 opacity-70" aria-hidden="true" />
         ) : (
@@ -175,9 +175,19 @@ export const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({ confidence, va
               </div>
             )}
 
+            <p
+              className="mt-3 text-[11px] leading-relaxed text-[#f3faf0]/60"
+              data-testid="confidence-note"
+            >
+              This score reflects how much evidence was found and how reliable its sources
+              are. It does not measure whether the answer is correct.
+              {breakdown && breakdown.claim_support === 0 &&
+                ' No claims were individually verified for this answer.'}
+            </p>
+
             <div className="mt-3.5 border-t border-white/5 pt-2 text-[10px] text-[#f3faf0]/40 font-mono flex justify-between">
               <span>Formula: UNKNOWN v1.0</span>
-              <span>Deterministic API score</span>
+              <span>Not a correctness probability</span>
             </div>
           </div>
         </>
