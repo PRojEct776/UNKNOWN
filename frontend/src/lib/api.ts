@@ -877,8 +877,13 @@ export interface BackendConceptGraphNode {
   id: string;
   label: string;
   cluster: string;
-  relevance: number;
-  importance: number;
+  // Not measured by the backend: always null. Never display or invent a value.
+  relevance?: number | null;
+  importance?: number | null;
+  // Measured: number of document chunks containing the label.
+  mention_count?: number;
+  // "llm" or "heuristic"
+  origin?: string;
   sources: BackendConceptSource[];
 }
 
@@ -886,6 +891,9 @@ export interface BackendConceptGraphEdge {
   source: string;
   target: string;
   relation: string;
+  // "co_occurrence" | "relation_term_present" (lexical evidence only) | "unverified"
+  evidence_status?: string;
+  origin?: string;
   sources: BackendConceptSource[];
 }
 
@@ -895,6 +903,16 @@ export interface BackendConceptGraphResponse {
   edges: BackendConceptGraphEdge[];
   total_nodes: number;
   total_edges: number;
+  // "ok" or "empty"; when empty, empty_reason says why.
+  status?: string;
+  empty_reason?: string | null;
+  extraction?: {
+    method: string;
+    chunks_analyzed: number;
+    chunks_total: number;
+    dropped_nodes: number;
+    dropped_edges: number;
+  };
   from_cache: boolean;
 }
 

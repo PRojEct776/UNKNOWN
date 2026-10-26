@@ -124,8 +124,8 @@ export const PaperDetailModal: React.FC<PaperDetailModalProps> = ({
     }
   };
 
-  const iqScore = overview?.document_iq?.iq_score ?? 85;
-  const iqGrade = overview?.document_iq?.grade ?? 'A';
+  const iqScore = overview?.document_iq?.iq_score;
+  const iqGrade = overview?.document_iq?.grade;
 
   return (
     <AnimatePresence>
@@ -341,11 +341,11 @@ export const PaperDetailModal: React.FC<PaperDetailModalProps> = ({
                         <span>Document IQ</span>
                       </span>
                       <p className="text-sm font-bold text-white mt-0.5">
-                        Score: <span className="text-emerald-400">{iqScore}</span> / 100
+                        {iqScore != null ? <>Score: <span className="text-emerald-400">{iqScore}</span> / 100</> : 'Not scored'}
                       </p>
                     </div>
                     <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      Grade {iqGrade}
+                      {iqGrade ? `Grade ${iqGrade}` : 'No grade'}
                     </span>
                   </div>
                 </div>

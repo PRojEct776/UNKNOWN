@@ -75,7 +75,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 <span>
                   IQ:{' '}
                   {typeof ov.document_iq === 'object'
-                    ? ov.document_iq.iq_score ?? ov.document_iq.grade ?? 'Verified'
+                    ? ov.document_iq.iq_score ?? ov.document_iq.grade ?? 'not available'
                     : ov.document_iq}
                 </span>
               </div>
@@ -152,7 +152,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               <span className="font-medium">Explore Overview in 3D Knowledge Orbit</span>
             </button>
             <span className="text-[10px] text-[#f3faf0]/50 font-mono">
-              {(ov?.key_topics?.length || 0) + (ov?.summary_sentences?.length || 0) + 4} conceptual nodes
+              {buildOrbitGraphFromMessage(message).total_nodes} nodes in the orbit view
             </span>
           </div>
         </div>

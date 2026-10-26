@@ -47,7 +47,7 @@ export function mapBackendEvidence(sources: BackendQuerySource[]): Evidence[] {
     chunkId: s.chunk_id,
     text: `Retrieved chunk ${s.chunk_id} from ${s.document} (Rank #${s.rank ?? idx + 1})`,
     score: typeof s.hybrid_score === 'number' ? s.hybrid_score : undefined,
-    relevance: typeof s.hybrid_score === 'number' ? s.hybrid_score : 0.85,
+    relevance: typeof s.hybrid_score === 'number' ? s.hybrid_score : undefined,
   }));
 }
 
