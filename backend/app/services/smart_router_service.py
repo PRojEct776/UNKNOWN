@@ -503,7 +503,7 @@ Return ONLY valid JSON."""
         logger.warning("DNA extraction LLM fallback: %s", exc)
         parsed = {
             "concepts": [stem.replace("_", " ")],
-            "entities": [{"name": stem, "type": "Research System", "page": 1}],
+            "entities": [{"name": stem, "type": "Research System", "page": None}],
             "methods": ["Empirical benchmark evaluation"],
             "claims": ["Outperforms baseline configurations across experimental parameters."],
             "difficulty": "Advanced",
@@ -512,7 +512,7 @@ Return ONLY valid JSON."""
         }
 
     sources = [
-        {"document": safe_name, "page": c.get("page", 1), "chunk_id": c.get("chunk_id", "")}
+        {"document": safe_name, "page": c.get("page"), "chunk_id": c.get("chunk_id", "")}
         for c in chunks[:5]
     ]
 

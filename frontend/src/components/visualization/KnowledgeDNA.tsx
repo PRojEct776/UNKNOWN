@@ -123,7 +123,7 @@ export const KnowledgeDNA: React.FC<KnowledgeDNAProps> = ({
       const entities: BackendDocumentDNAEntity[] = (data.signals || []).map((s) => ({
         name: s.name || 'Signal',
         type: s.type || 'Concept',
-        page: 1,
+        page: 0,
       }));
 
       return {
@@ -650,7 +650,7 @@ export const KnowledgeDNA: React.FC<KnowledgeDNAProps> = ({
                         <td className="py-2 px-3 font-mono text-[#3b82f6]">Concept</td>
                         <td className="py-2 px-3 text-white font-medium">{concept}</td>
                         <td className="py-2 px-3 text-[#98a6b0]">Foundational domain topic</td>
-                        <td className="py-2 px-3 text-right text-xs font-mono text-[#98a6b0]">Page 1-3</td>
+                        <td className="py-2 px-3 text-right text-xs font-mono text-[#98a6b0]">Not tracked</td>
                       </tr>
                     ))}
 
@@ -673,7 +673,7 @@ export const KnowledgeDNA: React.FC<KnowledgeDNAProps> = ({
                           </span>
                         </td>
                         <td className="py-2 px-3 text-right text-xs font-mono text-[#98a6b0]">
-                          Page {entity.page || 1}
+                          {entity.page ? `Page ${entity.page}` : 'Page unknown'}
                         </td>
                       </tr>
                     ))}
