@@ -56,8 +56,9 @@ def test_fuzzy_matching_ignores_documents_the_user_cannot_access():
 
     assert response.status_code == 200
     assert "secret_plan.pdf" not in response.json()["matched_documents"]
-    graph.assert_called_once()
-    assert graph.call_args.args[0] != "secret_plan.pdf"
+    # Nothing authorized was matched, so nothing runs: no silent fallback.
+    graph.assert_not_called()
+    assert response.json()["executed_feature"] is None
 
 
 def test_qa_with_no_accessible_documents_does_not_query(monkeypatch):

@@ -182,7 +182,7 @@ def test_summery_of_x_routes_to_summary(client):
                 "summary_sentences": [],
             }
 
-            resp = client.post("/smart-query", json={"text": "summery of X"})
+            resp = client.post("/smart-query", json={"text": "summery of X", "document_ids": ["sample_x.pdf"]})
             assert resp.status_code == 200
             data = resp.json()
             assert data["detected_feature"] == "summary"

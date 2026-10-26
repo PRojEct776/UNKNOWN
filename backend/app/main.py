@@ -1885,7 +1885,19 @@ async def post_smart_query(
     detected = routing["detected_feature"]
     executed_result = None
     if detected:
-        target_doc = routing["matched_documents"][0] if routing["matched_documents"] else (docs[0] if docs else "")
+        if detected in ("mindmap", "dna", "summary", "overview") and not routing["matched_documents"]:
+            return SmartQueryResponse(
+                original_query=routing["original_query"],
+                rewritten_query=routing["rewritten_query"],
+                matched_documents=[],
+                detected_feature=detected,
+                executed_feature=None,
+                run_all=routing["run_all"],
+                is_ambiguous=True,
+                clarification_options=routing["clarification_options"],
+                result={"error": "Select a document for this feature; none was matched."},
+            )
+        target_doc = routing["matched_documents"][0] if routing["matched_documents"] else ""
         if detected == "mindmap":
             executed_result = extract_concept_graph(target_doc, _llm_fn, rag_service.retriever) if target_doc else {}
         elif detected == "dna":
