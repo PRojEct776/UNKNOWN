@@ -780,6 +780,22 @@ class RAGService:
 
         logger.info(f"Retrieved {len(results)} chunks " f"for claim verification.")
 
+        if not results:
+            return ClaimVerificationResponse(
+                claim=claim,
+                verdict="NOT_FOUND",
+                confidence=0.0,
+                explanation=(
+                    "No relevant passages were retrieved from the selected "
+                    "documents, so this claim could not be checked."
+                ),
+                evidence=[],
+                supporting_evidence=[],
+                contradicting_evidence=[],
+                source_chunk_ids=[],
+                sources=[],
+            )
+
         # ==================================================
 
         # 2. BUILD CONTEXT
@@ -834,6 +850,12 @@ class RAGService:
 
         sources = build_sources(results)
 
+        verification = self.claim_verifier.ground_result(
+            verification,
+            results[: getattr(self.context_builder, "max_chunks", 5)],
+            max_chars=getattr(self.context_builder, "max_chars", None),
+        )
+
         logger.info("Claim verification completed: " f"{verification.verdict.value}")
 
         return ClaimVerificationResponse(
@@ -843,6 +865,8 @@ class RAGService:
             explanation=verification.explanation,
             evidence=verification.evidence,
             source_chunk_ids=(verification.source_chunk_ids),
+            supporting_evidence=verification.supporting_evidence,
+            contradicting_evidence=verification.contradicting_evidence,
             sources=sources,
         )
 

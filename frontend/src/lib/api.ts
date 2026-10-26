@@ -220,6 +220,8 @@ export interface BackendVerifyResponse {
   explanation: string;
   evidence: string[];
   source_chunk_ids: string[];
+  supporting_evidence?: string[];
+  contradicting_evidence?: string[];
   sources: BackendQuerySource[];
 }
 

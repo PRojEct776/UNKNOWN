@@ -210,6 +210,8 @@ class ClaimVerificationResponse(BaseModel):
     evidence: list[str]
     source_chunk_ids: list[str]
     sources: list[Source]
+    supporting_evidence: list[str] = Field(default_factory=list)
+    contradicting_evidence: list[str] = Field(default_factory=list)
 
 
 class ContradictionRequest(BaseModel):
