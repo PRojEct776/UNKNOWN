@@ -902,3 +902,22 @@ def build_answer_response(
         gaps=gaps or [],
         trace_id=trace_id,
     )
+
+
+def final_answer_after_claim_filter(
+    claims: list,
+    refined_answer: str | None,
+    not_found: str,
+) -> str | None:
+    """
+    Decide what to show after atomic claim verification.
+
+    Returns the refined answer, or None when nothing survived verification and
+    the caller must abstain (never fall back to the unverified original text).
+    """
+    if not claims:
+        return None
+    text = (refined_answer or "").strip()
+    if not text or text == not_found or text == "Not found in available sources.":
+        return None
+    return refined_answer

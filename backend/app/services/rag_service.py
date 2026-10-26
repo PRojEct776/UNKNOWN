@@ -579,14 +579,27 @@ class RAGService:
 
         # Task A5: Atomic claim verification, regeneration and filtering
         try:
-            from app.rag.atomic_claims import process_and_verify_claims
+            from app.rag.atomic_claims import (
+                final_answer_after_claim_filter,
+                process_and_verify_claims,
+            )
             claims, refined_answer = process_and_verify_claims(
                 answer=answer,
                 passages=results,
                 llm=self.llm,
             )
-            if refined_answer and refined_answer != GROUNDED_NOT_FOUND:
-                answer = refined_answer
+            final_answer = final_answer_after_claim_filter(
+                claims, refined_answer, GROUNDED_NOT_FOUND
+            )
+            if final_answer is None:
+                logger.info("Atomic claim verification: no claim survived; abstaining.")
+                return QueryResponse(
+                    query=normalized_query,
+                    query_type=query_type.value,
+                    answer=GROUNDED_NOT_FOUND,
+                    sources=[],
+                )
+            answer = final_answer
         except Exception as exc:
             logger.warning("Atomic claim verification failed (%s); using verified sentences.", exc)
             claims = [
