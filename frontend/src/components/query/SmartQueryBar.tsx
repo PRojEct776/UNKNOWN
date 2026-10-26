@@ -30,7 +30,7 @@ export interface SmartQueryBarProps {
 export interface FeatureProgress {
   feature: string;
   label: string;
-  status: 'pending' | 'running' | 'completed' | 'error';
+  status: 'pending' | 'running' | 'completed' | 'error' | 'not_executed';
   progress: number;
 }
 
@@ -404,7 +404,7 @@ export const SmartQueryBar: React.FC<SmartQueryBarProps> = ({
                   )}
                   <span className="truncate">{step.label}</span>
                 </div>
-                <span className="text-[9px] opacity-75 capitalize">{step.status}</span>
+                <span className="text-[9px] opacity-75 capitalize">{step.status === 'not_executed' ? 'not run' : step.status}</span>
               </div>
             ))}
           </div>

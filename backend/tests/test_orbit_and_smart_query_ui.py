@@ -271,7 +271,11 @@ def test_one_button_flow_with_streamed_events(client):
     assert len(completed_events) >= 1, "Expected at least one feature_complete event"
     sample_complete = completed_events[0]
     assert "feature" in sample_complete
-    assert sample_complete.get("status") in ("success", "completed")
+    # Honest status: the stream must not claim success for features it never ran.
+    assert sample_complete.get("status") == "not_executed"
+    assert "ready for" not in str(sample_complete.get("result", ""))
+    done_events = [e for e in events if e.get("event") == "run_all_complete"]
+    assert done_events and done_events[0].get("features_executed") == 0
     assert "progress" in sample_complete
 
 
