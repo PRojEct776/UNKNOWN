@@ -161,7 +161,7 @@ export const SmartQueryBar: React.FC<SmartQueryBarProps> = ({
                     return {
                       ...step,
                       status: (evt.status as any) || 'running',
-                      progress: evt.progress || 100,
+                      progress: ['success', 'completed'].includes(String(evt.status)) ? 100 : 0,
                     };
                   }
                   return step;
@@ -172,7 +172,6 @@ export const SmartQueryBar: React.FC<SmartQueryBarProps> = ({
           abortControllerRef.current.signal,
         );
 
-        setOverallProgress(100);
       } catch (err: unknown) {
         if ((err as Error)?.name !== 'AbortError') {
           console.error('Smart query stream failed:', err);
