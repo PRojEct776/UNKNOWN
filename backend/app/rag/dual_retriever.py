@@ -209,6 +209,69 @@ def _first_n_sentences(text: str, n: int) -> str:
     return " ".join(sentences[:n]).strip()
 
 
+_EXCERPT_STOPWORDS = frozenset({
+    "the", "and", "for", "are", "was", "what", "which", "who", "how", "does",
+    "did", "with", "from", "that", "this", "find", "exact", "tell", "give",
+    "show", "about", "into", "has", "have", "can", "you", "your", "its",
+})
+
+
+def _query_focused_excerpt(text: str, query: str, max_chars: int = 320) -> str:
+    """
+    Return the part of ``text`` that best matches ``query``.
+
+    Identifier-like query tokens (containing a digit, hyphen or underscore,
+    e.g. BLP-204) win: the excerpt is a verbatim window around their first
+    occurrence. Otherwise the sentence with the most query-word overlap is
+    used. With no match at all, returns "" so callers can fall back.
+    """
+    text = (text or "").strip()
+    if not text:
+        return ""
+    tokens = [tk.strip("-") for tk in re.findall(r"\w[\w\-]*", query or "")]
+    identifiers = [
+        tk for tk in tokens
+        if len(tk) >= 3 and (any(ch.isdigit() for ch in tk) or "-" in tk or "_" in tk)
+    ]
+    low = text.lower()
+    for ident in identifiers:
+        idx = low.find(ident.lower())
+        if idx < 0:
+            continue
+        start = max(0, idx - 80)
+        end = min(len(text), idx + len(ident) + 160)
+        if start > 0:
+            sp = text.find(" ", start)
+            if 0 <= sp < idx:
+                start = sp + 1
+        if end < len(text):
+            sp = text.rfind(" ", idx + len(ident), end)
+            if sp > idx:
+                end = sp
+        excerpt = text[start:end].strip()
+        if start > 0:
+            excerpt = "\u2026 " + excerpt
+        if end < len(text):
+            excerpt = excerpt + " \u2026"
+        return excerpt
+    keywords = [
+        tk.lower() for tk in tokens
+        if len(tk) > 2 and tk.lower() not in _EXCERPT_STOPWORDS
+    ]
+    if not keywords:
+        return ""
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    best_i, best_score = -1, 0
+    for i, sent in enumerate(sentences):
+        s = sent.lower()
+        score = sum(1 for kw in set(keywords) if kw in s)
+        if score > best_score:
+            best_i, best_score = i, score
+    if best_score == 0:
+        return ""
+    return _extract_verbatim_quote(" ".join(sentences[best_i:best_i + 2]), max_chars)
+
+
 def _best_passage_text(chunks: list[dict]) -> tuple[str, str, str]:
     """
     Return (text, citation_label, url) for the highest-scoring chunk.
@@ -329,7 +392,7 @@ def _fetch_web_chunks(
 # Section builder
 # ---------------------------------------------------------------------------
 
-def _build_doc_section(doc_chunks: list[dict]) -> str:
+def _build_doc_section(doc_chunks: list[dict], query: str = "") -> str:
     """
     Render the doc_section string with page/chunk citations.
 
@@ -345,13 +408,13 @@ def _build_doc_section(doc_chunks: list[dict]) -> str:
         doc = c.get("document", "Unknown")
         page = c.get("page", "N/A")
         chunk_id = c.get("chunk_id", "N/A")
-        excerpt = _first_n_sentences(text, 2)
+        excerpt = _query_focused_excerpt(text, query) or _first_n_sentences(text, 2)
         if excerpt:
             parts.append(f"{excerpt} [Source: {doc}, p.{page}, §{chunk_id}]")
     return "\n\n".join(parts)
 
 
-def _build_web_section(web_chunks: list[dict]) -> str:
+def _build_web_section(web_chunks: list[dict], query: str = "") -> str:
     """
     Render the web_section string with live URL citations.
     """
@@ -365,7 +428,7 @@ def _build_web_section(web_chunks: list[dict]) -> str:
         title = c.get("title", c.get("document", "Unknown"))
         url = c.get("url", "")
         retrieved_at = c.get("retrieved_at", "")
-        excerpt = _first_n_sentences(text, 2)
+        excerpt = _query_focused_excerpt(text, query) or _first_n_sentences(text, 2)
         if excerpt:
             citation = f"[{title}]({url})" if url else title
             if retrieved_at:
@@ -572,8 +635,8 @@ class DualRetriever:
             logger.info("DualRetriever: doc_only=True – web connectors not called")
 
         # 3. Build sections
-        doc_section = _build_doc_section(doc_chunks) or None
-        web_section = _build_web_section(web_chunks) or None
+        doc_section = _build_doc_section(doc_chunks, query) or None
+        web_section = _build_web_section(web_chunks, query) or None
 
         # 4. Build comparison pairs
         questions = sub_questions or [query]
