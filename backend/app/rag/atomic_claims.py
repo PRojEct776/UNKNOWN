@@ -1,5 +1,5 @@
 """
-UNKNOWN X – Atomic Claim Verification Layer (Task A5)
+UNKNOWN X - Atomic Claim Verification Layer (Task A5)
 
 Pipeline:
 1. Split generated answer into atomic claims (LLM JSON).
@@ -432,6 +432,11 @@ _STOP_ENTITIES = {
     "paper", "author", "authors", "result", "results", "model", "approach",
 }
 
+# spaCy labels for purely numeric entities. Numbers are validated separately by
+# check_number_and_date_compatibility (which understands 35% == 0.35 and units),
+# so they must not be required to appear as a literal string in the passage.
+_NUMERIC_ENTITY_LABELS = {"CARDINAL", "ORDINAL", "PERCENT", "QUANTITY", "MONEY"}
+
 
 def extract_named_entities(text: str) -> set[str]:
     """Extract named entities using spaCy if present, or regex-based fallback."""
@@ -441,7 +446,12 @@ def extract_named_entities(text: str) -> set[str]:
             doc = nlp(text)
             entities = set()
             for ent in doc.ents:
+                if ent.label_ in _NUMERIC_ENTITY_LABELS:
+                    continue
                 clean = ent.text.strip().lower()
+                # Skip entities with no letters at all (e.g. "0.95", "2021")
+                if not re.search(r"[a-z]", clean):
+                    continue
                 if len(clean) > 1 and clean not in _STOP_ENTITIES:
                     entities.add(clean)
             return entities
