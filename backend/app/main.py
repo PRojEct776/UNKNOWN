@@ -1818,7 +1818,13 @@ def compare_document_dna(request: DNACompareRequest):
 
 
 @app.post("/smart-query")
-async def post_smart_query(request: SmartQueryRequest):
+async def post_smart_query(
+    request: SmartQueryRequest,
+    http_request: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+    x_user_id: str | None = Header(None),
+):
     """
     POST /smart-query:
     - Fuzzy match document names using rapidfuzz.
@@ -1835,12 +1841,27 @@ async def post_smart_query(request: SmartQueryRequest):
         extract_knowledge_dna_for_doc,
     )
     from app.services.overview_service import generate_document_overview
+    from app.rag.document_eligibility import get_user_authorized_documents
 
-    docs = [d.name for d in list_supported_documents(settings.PAPERS_DIR)]
+    active_user, _ = resolve_authenticated_workspace(
+        http_request, authorization, x_session_token, x_user_id=x_user_id
+    )
+    authorized_docs = get_user_authorized_documents(active_user, include_test_docs=True)
+
+    requested_ids = [Path(str(d)).name for d in (request.document_ids or [])]
+    denied = [d for d in requested_ids if d not in authorized_docs]
+    if denied:
+        raise HTTPException(status_code=404, detail=f"Document '{denied[0]}' not found")
+
+    docs = [
+        d.name
+        for d in list_supported_documents(settings.PAPERS_DIR)
+        if d.name in authorized_docs
+    ]
     
     routing = smart_route_query(
         text=request.text,
-        document_ids=request.document_ids,
+        document_ids=requested_ids or None,
         available_docs=docs,
         run_all=request.run_all or ("run all" in request.text.lower()),
     )
@@ -1872,11 +1893,15 @@ async def post_smart_query(request: SmartQueryRequest):
         elif detected in ("summary", "overview"):
             executed_result = generate_document_overview(target_doc, _llm_fn, rag_service.retriever) if target_doc else {}
         elif detected == "qa":
-            try:
-                ans = rag_service.query(routing["rewritten_query"], document_names=routing["matched_documents"] or None)
-                executed_result = ans.model_dump() if hasattr(ans, "model_dump") else ans
-            except Exception as exc:
-                executed_result = {"error": str(exc)}
+            qa_scope = routing["matched_documents"] or docs
+            if not qa_scope:
+                executed_result = {"error": "No accessible documents to answer from"}
+            else:
+                try:
+                    ans = rag_service.query(routing["rewritten_query"], document_names=qa_scope)
+                    executed_result = ans.model_dump() if hasattr(ans, "model_dump") else ans
+                except Exception as exc:
+                    executed_result = {"error": str(exc)}
         else:
             executed_result = {"status": "executed", "feature": detected, "target_documents": routing["matched_documents"]}
 

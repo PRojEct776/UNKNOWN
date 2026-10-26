@@ -122,7 +122,10 @@ def test_report_pdf_mind_map_runs_only_mindmap(client):
     assert routing["run_all"] is False
 
     # Test via API endpoint
-    with patch("app.rag.utils.list_supported_documents") as mock_list_docs:
+    with patch("app.rag.utils.list_supported_documents") as mock_list_docs, patch(
+        "app.rag.document_eligibility.get_user_authorized_documents",
+        return_value={"report.pdf"},
+    ):
         mock_file = MagicMock()
         mock_file.name = "report.pdf"
         mock_list_docs.return_value = [mock_file]
@@ -164,7 +167,10 @@ def test_summery_of_x_routes_to_summary(client):
     )
     assert routing["detected_feature"] == "summary"
 
-    with patch("app.rag.utils.list_supported_documents") as mock_list_docs:
+    with patch("app.rag.utils.list_supported_documents") as mock_list_docs, patch(
+        "app.rag.document_eligibility.get_user_authorized_documents",
+        return_value={"sample_x.pdf"},
+    ):
         mock_file = MagicMock()
         mock_file.name = "sample_x.pdf"
         mock_list_docs.return_value = [mock_file]
