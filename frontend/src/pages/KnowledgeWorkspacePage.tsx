@@ -614,7 +614,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
       return [
         'Research this topic across real academic and web literature',
         'Find relevant recent publications and preprints on this question',
-        'Compare document findings with external scholarly sources',
+        'Compare document findings with external web sources',
         'Investigate conflicting evidence between internal corpus and web data',
       ];
     }
