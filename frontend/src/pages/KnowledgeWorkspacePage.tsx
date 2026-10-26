@@ -257,7 +257,12 @@ export const KnowledgeWorkspacePage: React.FC = () => {
   const handleToggleWeb = () => {
     if (!activeConversation) return;
     setConversations((prev) =>
-      prev.map((c) => (c.id === activeConvId ? { ...c, includeWeb: !c.includeWeb } : c))
+      prev.map((c) => {
+        if (c.id !== activeConvId) return c;
+        if (!c.includeWeb) return { ...c, includeWeb: true, webOnly: false };
+        if (!c.webOnly) return { ...c, includeWeb: true, webOnly: true };
+        return { ...c, includeWeb: false, webOnly: false };
+      })
     );
   };
 
@@ -394,6 +399,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
     const currentFeature = activeConversation.activeFeature;
     const currentDocs = [...activeConversation.selectedDocIds];
     const currentWeb = activeConversation.includeWeb;
+    const currentWebOnly = currentWeb && !!activeConversation.webOnly;
 
     // Build scope tag
     const scopeOption: ScopeOption =
@@ -415,6 +421,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
       scope: scopeOption,
       selectedDocIds: currentDocs,
       includeWeb: currentWeb,
+      webOnly: currentWebOnly,
     };
 
     // Auto-update conversation title if it's the first inquiry
@@ -443,6 +450,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
 
     const targetDocs = currentDocs.length > 0 ? currentDocs : undefined;
     const docOnly = !currentWeb;
+    const currentSourceMode = currentWeb ? (currentWebOnly ? 'web' : 'both') : 'documents';
 
     try {
       let workspaceResult: WorkspaceResult;
@@ -472,12 +480,12 @@ export const KnowledgeWorkspacePage: React.FC = () => {
             setIsLoading(false);
             return;
           }
-          const resp = await queryBackend(currentText || 'Overview of documents', targetDocs, docOnly, scopeOption, controller.signal);
+          const resp = await queryBackend(currentText || 'Overview of documents', targetDocs, docOnly, scopeOption, controller.signal, currentSourceMode);
           workspaceResult = buildResultFromQueryResponse(currentText || 'Overview of documents', resp);
           break;
         }
         case 'discover': {
-          const resp = await queryBackend(currentText, targetDocs, docOnly, scopeOption, controller.signal);
+          const resp = await queryBackend(currentText, targetDocs, docOnly, scopeOption, controller.signal, currentSourceMode);
           workspaceResult = buildResultFromQueryResponse(currentText, resp);
           break;
         }
@@ -517,7 +525,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
           break;
         }
         default: {
-          const resp = await queryBackend(currentText, targetDocs, docOnly, scopeOption, controller.signal);
+          const resp = await queryBackend(currentText, targetDocs, docOnly, scopeOption, controller.signal, currentSourceMode);
           workspaceResult = buildResultFromQueryResponse(currentText, resp);
           break;
         }
@@ -532,6 +540,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
         scope: scopeOption,
         selectedDocIds: currentDocs,
         includeWeb: currentWeb,
+        webOnly: currentWebOnly,
         result: workspaceResult,
       };
 
@@ -855,6 +864,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
             activeFeature={activeConversation?.activeFeature || 'discover'}
             onFeatureChange={handleFeatureChange}
             includeWeb={activeConversation?.includeWeb || false}
+            webOnly={activeConversation?.webOnly || false}
             onToggleWeb={handleToggleWeb}
             availableDocuments={availableDocs}
             selectedDocIds={activeConversation?.selectedDocIds || []}

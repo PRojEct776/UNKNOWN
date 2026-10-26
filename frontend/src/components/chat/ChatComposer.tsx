@@ -33,6 +33,7 @@ interface ChatComposerProps {
   onFeatureChange: (feature: AnalysisMode) => void;
   // Web search toggle
   includeWeb: boolean;
+  webOnly?: boolean;
   onToggleWeb: () => void;
   // Documents
   availableDocuments: BackendDocument[];
@@ -109,6 +110,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   activeFeature,
   onFeatureChange,
   includeWeb,
+  webOnly = false,
   onToggleWeb,
   availableDocuments,
   selectedDocIds,
@@ -415,10 +417,10 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
                   ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300 font-medium'
                   : 'border-white/10 bg-[#151f28] text-[#f3faf0]/60 hover:text-white hover:bg-[#1a2732]'
               }`}
-              title={includeWeb ? 'External web research enabled' : 'Click to enable external web research'}
+              title={!includeWeb ? 'Documents only. Click to add scholarly web sources.' : webOnly ? 'Scholarly web only (arXiv, Crossref, OpenAlex, Wikipedia). Your question text is sent to these services. Click for documents only.' : 'Documents + scholarly web. Your question text is sent to arXiv, Crossref, OpenAlex and Wikipedia. Click for web only.'}
             >
               <Globe className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Web Evidence</span>
+              <span className="hidden sm:inline">{!includeWeb ? 'Documents only' : webOnly ? 'Scholarly web only' : 'Docs + scholarly web'}</span>
             </button>
           </div>
 

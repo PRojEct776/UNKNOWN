@@ -188,7 +188,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               )}
               {message.includeWeb && (
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
-                  +Web
+                  {message.webOnly ? 'Web only' : '+Web'}
                 </span>
               )}
               <span>{message.timestamp}</span>

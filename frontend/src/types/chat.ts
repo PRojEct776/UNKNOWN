@@ -12,6 +12,7 @@ export interface ChatMessage {
   scope?: ScopeOption;
   selectedDocIds?: string[];
   includeWeb?: boolean;
+  webOnly?: boolean;
   overview?: BackendDocumentOverview;
   isOverviewLoading?: boolean;
   documentName?: string;
@@ -30,6 +31,7 @@ export interface Conversation {
   selectedDocIds: string[];
   activeFeature: AnalysisMode;
   includeWeb: boolean;
+  webOnly?: boolean;
   messages: ChatMessage[];
 }
 

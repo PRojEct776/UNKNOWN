@@ -531,6 +531,7 @@ export async function queryBackend(
   docOnly: boolean = false,
   scope?: string,
   signal?: AbortSignal,
+  sourceMode?: 'documents' | 'web' | 'both',
 ): Promise<BackendQueryResponse> {
   return apiFetch<BackendQueryResponse>(
     '/answer',
@@ -540,7 +541,7 @@ export async function queryBackend(
         query,
         document_names: documentNames ?? null,
         doc_only: docOnly,
-        source_mode: docOnly ? 'documents' : 'both',
+        source_mode: sourceMode ?? (docOnly ? 'documents' : 'both'),
         scope: scope ?? null,
       }),
     },
