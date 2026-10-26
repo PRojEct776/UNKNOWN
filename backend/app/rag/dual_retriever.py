@@ -486,6 +486,26 @@ def _web_gaps_from_statuses(statuses: list[dict]) -> list[str]:
 # Section builder
 # ---------------------------------------------------------------------------
 
+def _evidence_gaps(doc_chunks: list[dict], web_chunks: list[dict], query: str) -> list[str]:
+    """
+    Evidence-quality notes for /answer.
+
+    - nothing retrieved at all -> say so
+    - passages retrieved but none shares terms with the query -> warn that the
+      excerpts are the closest matches (semantic hits) and may not answer it
+    """
+    if not doc_chunks and not web_chunks:
+        return ["No evidence was retrieved for this query."]
+    shown = list(doc_chunks[:3]) + list(web_chunks[:3])
+    for c in shown:
+        if _query_focused_excerpt(str(c.get("text", "")), query):
+            return []
+    return [
+        "No retrieved passage shares terms with the query; the excerpts shown are "
+        "the closest matches and may not answer it."
+    ]
+
+
 def _build_doc_section(doc_chunks: list[dict], query: str = "") -> str:
     """
     Render the doc_section string with page/chunk citations.
@@ -761,7 +781,7 @@ class DualRetriever:
             detail=detail,
             doc_sources=doc_chunks,
             web_sources=web_chunks,
-            gaps=web_gaps,
+            gaps=web_gaps + _evidence_gaps(doc_chunks, web_chunks, query),
         )
 
     # ------------------------------------------------------------------

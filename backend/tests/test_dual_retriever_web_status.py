@@ -147,5 +147,5 @@ def test_doc_only_adds_no_web_gaps_and_calls_no_connector(monkeypatch):
     _install(monkeypatch, [_fake("arxiv", fail="ConnectError", calls=calls)])
     monkeypatch.setattr(dual_retriever, "_build_comparison", lambda *a, **k: None)
     result = _RETRIEVE(_bare_retriever(["arxiv"]), "some query", doc_only=True)
-    assert result.gaps == []
+    assert not any("Web source" in g or "scholarly web" in g for g in result.gaps)
     assert calls == []
