@@ -75,23 +75,135 @@ export interface OrbitNode {
   id: string;
   label: string;
   cluster: string;
-  relevance: number;
-  importance: number;
+  // Human-readable node kind (document source, web source, LLM concept, ...)
+  kind: string;
+  origin?: string;
+  // Measured: chunks containing the label. null when not measured.
+  mentionCount: number | null;
   sources: BackendConceptSource[];
-  radius: number; // mapped from 1 - relevance
-  size: number; // mapped from importance
-  speed: number;
-  angle: number;
-  elevation: number;
-  // Detailed explanation metadata (Phase 2 Requirement 3)
-  definition?: string;
-  explanation?: string;
-  mechanismSteps?: string[];
-  whyItMatters?: string;
-  relatedConcepts?: { name: string; relation: string }[];
-  equations?: { name: string; formula: string; explanation: string }[];
-  evidenceStatus?: 'Verified Document Evidence' | 'Live Web Evidence' | 'Inferred Relationship';
+  // Layout only. Position carries no meaning.
+  position: [number, number, number];
+  size: number;
+  detail?: string;
   url?: string;
+}
+
+// Deterministic free-form layout (Fibonacci sphere with depth variance).
+function layoutPosition(index: number, total: number): [number, number, number] {
+  const n = Math.max(total, 1);
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const y = n === 1 ? 0 : 1 - (index / (n - 1)) * 2;
+  const ring = Math.sqrt(Math.max(0, 1 - y * y));
+  const theta = golden * index;
+  const radius = 3.6 + Math.min(n, 60) * 0.05 + (index % 3) * 0.5;
+  return [Math.cos(theta) * ring * radius, y * radius * 0.8, Math.sin(theta) * ring * radius];
+}
+
+function describeNodeKind(origin: string | undefined, cluster: string | undefined): string {
+  switch (origin) {
+    case 'answer_source':
+      return 'Document source';
+    case 'web_source':
+      return 'Web source';
+    case 'comparison':
+      return 'Comparison verdict';
+    case 'overview_topic':
+      return 'Overview topic (heuristic)';
+    case 'llm':
+      return 'LLM-extracted concept';
+    case 'heuristic':
+      return 'Heuristic concept';
+    default:
+      return cluster || 'Node';
+  }
+}
+
+function describeEvidenceStatus(status: string): string {
+  switch (status) {
+    case 'co_occurrence':
+      return 'Both concepts appear in the same chunk';
+    case 'relation_term_present':
+      return 'Same chunk, and a relation term is present (lexical check only)';
+    case 'retrieved':
+      return 'Retrieved for this question';
+    case 'model_verdict':
+      return 'Model verdict, not independently verified';
+    case 'unverified':
+      return 'Not verified';
+    default:
+      return status;
+  }
+}
+
+function describeNodeOrigin(origin: string | undefined): string {
+  switch (origin) {
+    case 'llm':
+      return 'Proposed by a language model reading the document, and kept only because the label appears word-for-word in the text.';
+    case 'heuristic':
+      return 'Picked by a rule-based keyword heuristic, and kept only because the label appears word-for-word in the text.';
+    case 'answer_source':
+      return 'A document source the answer was built from.';
+    case 'web_source':
+      return 'An external web source returned for this question.';
+    case 'comparison':
+      return 'A document-versus-web comparison produced for this question.';
+    case 'overview_topic':
+      return 'A keyword from the document overview. It has no passage attached.';
+    default:
+      return 'Origin not specified.';
+  }
+}
+
+function describeConnection(status: string, relation: string, other: string): string {
+  switch (status) {
+    case 'co_occurrence':
+      return `Appears in the same text chunk as "${other}".`;
+    case 'relation_term_present':
+      return `Appears in the same text chunk as "${other}", and the word "${relation}" is also there.`;
+    case 'retrieved':
+      return `Retrieved as a source for "${other}".`;
+    case 'model_verdict':
+      return `Model-generated comparison verdict for "${other}".`;
+    default:
+      return `Listed as connected to "${other}" without text evidence.`;
+  }
+}
+
+function summarizePages(sources: BackendConceptSource[]): string {
+  if (sources.length === 0) return 'no sources attached';
+  const known = new Set<string>();
+  let unknown = 0;
+  for (const s of sources) {
+    if (s.page === null || s.page === undefined || s.page === '') unknown += 1;
+    else known.add(String(s.page));
+  }
+  const parts: string[] = [];
+  if (known.size > 0) {
+    const sorted = Array.from(known).sort((a, b) => Number(a) - Number(b));
+    parts.push(`page ${sorted.join(', ')}`);
+  }
+  if (unknown > 0) parts.push(`${unknown} source(s) with unknown page`);
+  return parts.join('; ');
+}
+
+function highlightPassage(passage: string, label: string): React.ReactNode {
+  const idx = label ? passage.toLowerCase().indexOf(label.toLowerCase()) : -1;
+  if (idx < 0) return passage;
+  return (
+    <>
+      {passage.slice(0, idx)}
+      <mark className="bg-[#a7d0d2]/25 text-white rounded px-0.5">{passage.slice(idx, idx + label.length)}</mark>
+      {passage.slice(idx + label.length)}
+    </>
+  );
+}
+
+function tabClass(active: boolean): string {
+  return `flex items-center justify-center gap-1 py-1 px-1.5 rounded transition-colors ${
+    active
+      ? 'bg-[#1b2632] text-[#a7d0d2] font-semibold border border-[#a7d0d2]/40 shadow-xs'
+      : 'text-[#f3faf0]/60 hover:text-white hover:bg-white/5'
+  }`;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +257,7 @@ const CentralDocumentNode: React.FC<{
       {/* Camera-facing center label */}
       <Html center distanceFactor={14} position={[0, 1.1, 0]}>
         <div className="pointer-events-none select-none rounded bg-[#0b1219]/90 border border-[#d2434e] px-2.5 py-1 text-center shadow-lg backdrop-blur-md">
-          <span className="block text-[9px] font-mono uppercase text-[#d2434e] font-bold">DOCUMENT CORE</span>
+          <span className="block text-[9px] font-mono uppercase text-[#d2434e] font-bold">CENTER</span>
           <span className="text-xs font-semibold text-white truncate max-w-[140px] block">{title}</span>
         </div>
       </Html>
@@ -165,25 +277,13 @@ const OrbitingConceptNode: React.FC<{
   showLabel: boolean; // Level-of-Detail toggle
   onHover: (hover: boolean) => void;
   onClick: () => void;
-}> = ({ node, isPlaying, isSelected, isHovered, isMatch, showLabel, onHover, onClick }) => {
+}> = ({ node, isSelected, isHovered, isMatch, showLabel, onHover, onClick }) => {
   const groupRef = useRef<THREE.Group>(null!);
   const meshRef = useRef<THREE.Mesh>(null!);
   const theme = getClusterTheme(node.cluster);
 
-  useFrame(({ clock }) => {
-    if (!groupRef.current) return;
-    const t = clock.getElapsedTime();
-    const currentAngle = node.angle + (isPlaying ? t * node.speed : 0);
-
-    const x = Math.cos(currentAngle) * node.radius;
-    const z = Math.sin(currentAngle) * node.radius;
-    const y = node.elevation + Math.sin(t * 1.5 + node.angle) * 0.15;
-
-    groupRef.current.position.set(x, y, z);
-  });
-
   return (
-    <group ref={groupRef} onClick={onClick}>
+    <group ref={groupRef} position={node.position} onClick={onClick}>
       <mesh
         ref={meshRef}
         onPointerOver={() => onHover(true)}
@@ -226,16 +326,28 @@ const OrbitingConceptNode: React.FC<{
 // ---------------------------------------------------------------------------
 const RelationLines: React.FC<{ nodes: OrbitNode[]; edges: BackendConceptGraphEdge[] }> = ({ nodes, edges }) => {
   const lineObjects = useMemo(() => {
-    return edges.map((e) => {
-      const src = nodes.find((n) => n.id === e.source);
-      const tgt = nodes.find((n) => n.id === e.target);
-      if (!src || !tgt) return null;
-      const p1 = new THREE.Vector3(Math.cos(src.angle) * src.radius, src.elevation, Math.sin(src.angle) * src.radius);
-      const p2 = new THREE.Vector3(Math.cos(tgt.angle) * tgt.radius, tgt.elevation, Math.sin(tgt.angle) * tgt.radius);
+    const posOf = (id: string): THREE.Vector3 | null => {
+      if (id === 'root') return new THREE.Vector3(0, 0, 0);
+      const n = nodes.find((x) => x.id === id);
+      return n ? new THREE.Vector3(n.position[0], n.position[1], n.position[2]) : null;
+    };
+    const out: THREE.Line[] = [];
+    for (const e of edges) {
+      const p1 = posOf(e.source);
+      const p2 = posOf(e.target);
+      if (!p1 || !p2) continue;
       const geom = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-      const mat = new THREE.LineBasicMaterial({ color: '#4d728e', opacity: 0.35, transparent: true });
-      return new THREE.Line(geom, mat);
-    }).filter(Boolean) as THREE.Line[];
+      const dashed = !e.evidence_status || e.evidence_status === 'unverified' || e.evidence_status === 'model_verdict';
+      const line = dashed
+        ? new THREE.Line(
+            geom,
+            new THREE.LineDashedMaterial({ color: '#4d728e', opacity: 0.4, transparent: true, dashSize: 0.18, gapSize: 0.12 }),
+          )
+        : new THREE.Line(geom, new THREE.LineBasicMaterial({ color: '#a7d0d2', opacity: 0.55, transparent: true }));
+      if (dashed) line.computeLineDistances();
+      out.push(line);
+    }
+    return out;
   }, [nodes, edges]);
 
   return (
@@ -245,6 +357,15 @@ const RelationLines: React.FC<{ nodes: OrbitNode[]; edges: BackendConceptGraphEd
       ))}
     </group>
   );
+};
+
+// Slowly rotates everything inside it while playing (layout only).
+const SlowRotation: React.FC<{ enabled: boolean; children: React.ReactNode }> = ({ enabled, children }) => {
+  const ref = useRef<THREE.Group>(null!);
+  useFrame((_, delta) => {
+    if (enabled && ref.current) ref.current.rotation.y += delta * 0.06;
+  });
+  return <group ref={ref}>{children}</group>;
 };
 
 // 3D Scene Container
@@ -292,24 +413,17 @@ const OrbitScene: React.FC<{
         maxDistance={22}
       />
 
+      <SlowRotation enabled={isPlaying}>
       {/* Central Document Node */}
       <CentralDocumentNode
         title={centerTitle}
         isHovered={hoveredNodeId === 'center'}
-        onHover={(h) => onHoverNode(h ? ({ id: 'center', label: centerTitle, cluster: 'Document', relevance: 1, importance: 1, sources: [], radius: 0, size: 0.75, speed: 0, angle: 0, elevation: 0 }) : null)}
+        onHover={(h) => onHoverNode(h ? ({ id: 'center', label: centerTitle, cluster: 'Center', kind: 'Center', mentionCount: null, sources: [], position: [0, 0, 0], size: 0.75 }) : null)}
         onClick={() => {}}
       />
 
       {/* Relation Connection Lines */}
       <RelationLines nodes={nodes} edges={edges} />
-
-      {/* Orbital Circles Guide Lines */}
-      {[2.5, 4.2, 6.0, 7.8].map((r, i) => (
-        <mesh key={`orbit-circle-${i}`} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[r - 0.015, r + 0.015, 64]} />
-          <meshBasicMaterial color="#4d728e" opacity={0.15} transparent side={THREE.DoubleSide} />
-        </mesh>
-      ))}
 
       {/* Concept Spheres with LOD */}
       {nodes.map((node, index) => {
@@ -337,6 +451,7 @@ const OrbitScene: React.FC<{
           />
         );
       })}
+      </SlowRotation>
     </>
   );
 };
@@ -346,11 +461,12 @@ const OrbitScene: React.FC<{
 // ---------------------------------------------------------------------------
 const Accessible2DOrbitFallback: React.FC<{
   nodes: OrbitNode[];
+  edges: BackendConceptGraphEdge[];
   centerTitle: string;
   selectedNode: OrbitNode | null;
   searchQuery: string;
   onSelectNode: (node: OrbitNode) => void;
-}> = ({ nodes, centerTitle, selectedNode, searchQuery, onSelectNode }) => {
+}> = ({ nodes, edges, centerTitle, selectedNode, searchQuery, onSelectNode }) => {
   const [focusedIndex, setFocusedIndex] = useState(0);
 
   const filteredNodes = useMemo(() => {
@@ -358,6 +474,19 @@ const Accessible2DOrbitFallback: React.FC<{
     const q = searchQuery.toLowerCase();
     return nodes.filter((n) => n.label.toLowerCase().includes(q) || n.cluster.toLowerCase().includes(q));
   }, [nodes, searchQuery]);
+
+  const coords = useMemo(() => {
+    const extent = Math.max(
+      1,
+      ...nodes.map((n) => Math.max(Math.abs(n.position[0]), Math.abs(n.position[2]))),
+    );
+    const map = new Map<string, [number, number]>();
+    map.set('root', [300, 200]);
+    nodes.forEach((n) => {
+      map.set(n.id, [300 + (n.position[0] / extent) * 230, 200 + (n.position[2] / extent) * 150]);
+    });
+    return map;
+  }, [nodes]);
 
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -397,33 +526,36 @@ const Accessible2DOrbitFallback: React.FC<{
       {/* SVG 2D Radar Canvas */}
       <div className="relative flex-1 flex items-center justify-center overflow-hidden">
         <svg viewBox="0 0 600 400" className="w-full h-full max-h-[380px]">
-          {/* Orbital rings */}
-          {[60, 110, 150, 180].map((r, i) => (
-            <circle
-              key={`ring-2d-${i}`}
-              cx="300"
-              cy="200"
-              r={r}
-              fill="none"
-              stroke="#4d728e"
-              strokeWidth="1"
-              strokeDasharray="4 4"
-              opacity="0.3"
-            />
-          ))}
-
           {/* Central Core Document */}
           <circle cx="300" cy="200" r="22" fill="#d2434e" />
           <text x="300" y="204" textAnchor="middle" fill="#ffffff" fontSize="9" fontWeight="bold">
             DOC
           </text>
 
-          {/* Concept Nodes in 2D Orbit */}
+          {/* Real edges only: dashed when unverified or a model verdict */}
+          {edges.map((e, i) => {
+            const a = coords.get(e.source);
+            const b = coords.get(e.target);
+            if (!a || !b) return null;
+            const dashed = !e.evidence_status || e.evidence_status === 'unverified' || e.evidence_status === 'model_verdict';
+            return (
+              <line
+                key={`svg-edge-${i}`}
+                x1={a[0]}
+                y1={a[1]}
+                x2={b[0]}
+                y2={b[1]}
+                stroke="#4d728e"
+                strokeWidth="0.75"
+                opacity="0.5"
+                strokeDasharray={dashed ? '3 3' : undefined}
+              />
+            );
+          })}
+
+          {/* Concept nodes (position is layout only) */}
           {filteredNodes.map((n, idx) => {
-            const angle = n.angle;
-            const dist = 50 + (1 - n.relevance) * 140;
-            const cx = 300 + Math.cos(angle) * dist;
-            const cy = 200 + Math.sin(angle) * dist;
+            const [cx, cy] = coords.get(n.id) ?? [300, 200];
             const isSelected = selectedNode?.id === n.id;
             const isFocused = idx === focusedIndex;
             const theme = getClusterTheme(n.cluster);
@@ -438,9 +570,6 @@ const Accessible2DOrbitFallback: React.FC<{
                 className="cursor-pointer group"
                 data-testid={`2d-node-${n.id}`}
               >
-                {/* Connecting relation line to center */}
-                <line x1="300" y1="200" x2={cx} y2={cy} stroke="#4d728e" strokeWidth="0.75" opacity="0.3" />
-
                 <circle
                   cx={cx}
                   cy={cy}
@@ -460,7 +589,7 @@ const Accessible2DOrbitFallback: React.FC<{
                   fontFamily="system-ui"
                   className="opacity-80 group-hover:opacity-100"
                 >
-                  {n.label.length > 12 ? `${n.label.slice(0, 11)}…` : n.label}
+                  {n.label.length > 12 ? `${n.label.slice(0, 11)}...` : n.label}
                 </text>
               </g>
             );
@@ -469,7 +598,7 @@ const Accessible2DOrbitFallback: React.FC<{
       </div>
 
       <div className="text-[10px] text-[#98a6b0] pt-2 border-t border-white/8 flex justify-between">
-        <span>Radius = 1 - Relevance (Closer to center = Higher Relevance)</span>
+        <span>Position is layout only and does not encode relevance</span>
         <span>Press Enter to inspect node details</span>
       </div>
     </div>
@@ -509,7 +638,7 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
   // Node Selection & Hover Tooltip
   const [selectedNode, setSelectedNode] = useState<OrbitNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<OrbitNode | null>(null);
-  const [activeInspectorTab, setActiveInspectorTab] = useState<'explanation' | 'sources' | 'scores' | 'confidence'>('explanation');
+  const [activeInspectorTab, setActiveInspectorTab] = useState<'details' | 'sources' | 'evidence'>('details');
 
   // In-app "How to read this" Panel
   const [showHowToRead, setShowHowToRead] = useState<boolean>(false);
@@ -526,67 +655,41 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
       docTitle = graphData.document || docTitle;
     } else if (concept) {
       docTitle = concept.name || docTitle;
+      // Concept results carry no per-node evidence, so no sources are attached.
       rawNodes = (concept.graphNodes || []).map((n) => ({
         id: n.id,
         label: n.label,
         cluster: n.type ? n.type.toUpperCase() : 'General',
-        relevance: n.isCentral ? 1.0 : 0.85,
-        importance: n.isCentral ? 1.0 : 0.75,
-        sources: evidence
-          ? evidence.map((e) => ({
-              document: e.documentName || docTitle,
-              page: e.page || 1,
-              chunk_id: e.chunkId || '',
-              passage: (e as any).passage || (e as any).text || '',
-            }))
-          : [],
+        sources: [],
       }));
     }
 
-    // Filter out central node from peripheral orbit
+    // Filter out central node from the orbiting set
     const peripheral = rawNodes.filter((n) => n.id !== 'root' && n.label !== docTitle);
-    const totalCount = peripheral.length || 1;
+    const totalCount = peripheral.length;
+    const maxMentions = peripheral.reduce(
+      (m, n) => Math.max(m, typeof n.mention_count === 'number' ? n.mention_count : 0),
+      0,
+    );
 
-    // Map into OrbitNode with 3D parameters
     const mapped: OrbitNode[] = peripheral.map((node, index) => {
-      const relevance = node.relevance ?? 0.8;
-      const importance = node.importance ?? 0.7;
-
-      // radius = 1 - relevance (scaled between 2.4 and 8.2 units)
-      const radius = 2.4 + (1 - Math.max(0.05, Math.min(1, relevance))) * 6.0;
-
-      // size = importance (scaled between 0.2 and 0.55)
-      const size = 0.2 + Math.max(0.1, Math.min(1, importance)) * 0.35;
-
-      // orbital speed: inner orbits move faster than outer orbits (Keplerian)
-      const speed = 0.15 / Math.sqrt(radius);
-
-      // angular distribution around circle
-      const angle = (index / totalCount) * Math.PI * 2;
-
-      // slight elevation variance for 3D depth
-      const elevation = (Math.sin(index * 1.7) * 0.7);
+      const extras = node as BackendConceptGraphNode & { url?: string; detail?: string };
+      const mentionCount = typeof node.mention_count === 'number' ? node.mention_count : null;
+      // Size encodes the measured mention count; uniform when not measured.
+      const size = mentionCount !== null && maxMentions > 0 ? 0.2 + (mentionCount / maxMentions) * 0.3 : 0.28;
 
       return {
         id: node.id,
         label: node.label,
         cluster: node.cluster || 'General',
-        relevance,
-        importance,
+        kind: describeNodeKind(node.origin, node.cluster),
+        origin: node.origin,
+        mentionCount,
         sources: node.sources || [],
-        radius,
+        position: layoutPosition(index, totalCount),
         size,
-        speed,
-        angle,
-        elevation,
-        definition: (node as any).definition,
-        explanation: (node as any).explanation,
-        mechanismSteps: (node as any).mechanismSteps,
-        whyItMatters: (node as any).whyItMatters,
-        relatedConcepts: (node as any).relatedConcepts,
-        equations: (node as any).equations,
-        evidenceStatus: (node as any).evidenceStatus || ((node as any).url ? 'Live Web Evidence' : 'Verified Document Evidence'),
-        url: (node as any).url,
+        detail: extras.detail,
+        url: extras.url,
       };
     });
 
@@ -630,6 +733,31 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
     }
   }, []);
 
+  const incidentEdges = useMemo(() => {
+    if (!selectedNode) return [];
+    return edges
+      .filter((e) => e.source === selectedNode.id || e.target === selectedNode.id)
+      .map((e) => {
+        const otherId = e.source === selectedNode.id ? e.target : e.source;
+        const other = normalizedNodes.find((n) => n.id === otherId);
+        return {
+          otherLabel: other ? other.label : otherId === 'root' ? centerTitle : otherId,
+          relation: e.relation,
+          status: e.evidence_status || 'unverified',
+        };
+      });
+  }, [edges, selectedNode, normalizedNodes, centerTitle]);
+
+  const firstPassage = selectedNode?.sources.find((s) => s.passage)?.passage ?? null;
+  const connectedLabels = incidentEdges
+    .filter((ie) => ie.otherLabel !== centerTitle)
+    .map((ie) => ie.otherLabel);
+
+  const emptyMessage =
+    graphData?.empty_reason === 'no_indexed_content'
+      ? 'This document has no indexed content yet.'
+      : 'No evidence-backed nodes are available for this view. Nothing is shown rather than inventing filler.';
+
   return (
     <section
       data-testid="concept-graph-3d-container"
@@ -651,7 +779,7 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
                 data-testid="orbit-node-count"
                 className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#1b2734] text-[#a7d0d2] border border-[#4d728e]/30"
               >
-                {normalizedNodes.length} Concepts Orbiting
+                {normalizedNodes.length} nodes
               </span>
             </div>
           </div>
@@ -742,20 +870,20 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1 text-[#f3faf0]/85">
             <div className="rounded bg-black/30 p-2.5 border border-white/6">
-              <span className="text-[#d2434e] font-semibold block mb-0.5">Centre Core</span>
-              <span>The primary research document at the gravitational center of the conceptual universe.</span>
+              <span className="text-[#d2434e] font-semibold block mb-0.5">Centre</span>
+              <span>The question (answer view) or the document (document view). Lines from the centre appear only where the data contains them.</span>
             </div>
             <div className="rounded bg-black/30 p-2.5 border border-white/6">
-              <span className="text-[#a7d0d2] font-semibold block mb-0.5">Orbit Radius (1 - Relevance)</span>
-              <span>Closer nodes are central to the paper; outer nodes represent tangential or broader concepts.</span>
+              <span className="text-[#a7d0d2] font-semibold block mb-0.5">Position</span>
+              <span>Layout only. Distance and angle carry no meaning, so nothing is ranked by where it sits.</span>
             </div>
             <div className="rounded bg-black/30 p-2.5 border border-white/6">
-              <span className="text-[#f59e0b] font-semibold block mb-0.5">Sphere Size (Importance)</span>
-              <span>Larger spheres indicate higher structural frequency and foundational importance.</span>
+              <span className="text-[#f59e0b] font-semibold block mb-0.5">Sphere size</span>
+              <span>For document concepts, the number of chunks that contain the label. Other nodes have a uniform size.</span>
             </div>
             <div className="rounded bg-black/30 p-2.5 border border-white/6">
-              <span className="text-[#10b981] font-semibold block mb-0.5">Colors & Lines</span>
-              <span>Colors denote topic clusters (Blue=Architecture, Green=Method); lines trace relationships.</span>
+              <span className="text-[#10b981] font-semibold block mb-0.5">Lines and colours</span>
+              <span>Solid lines are backed by retrieved or co-occurring evidence. Dashed lines are unverified or a model verdict. Colours group nodes by kind.</span>
             </div>
           </div>
         </aside>
@@ -765,9 +893,19 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* 3D WebGL Canvas or 2D Accessible Fallback */}
         <div className="lg:col-span-3 relative h-[520px] rounded-lg border border-white/8 bg-[#070b0f] overflow-hidden select-none">
+          {normalizedNodes.length === 0 && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center p-6 text-center text-xs text-[#98a6b0]">
+              <div className="space-y-1 max-w-sm">
+                <Compass className="h-6 w-6 text-[#4d728e]/60 mx-auto" />
+                <p className="text-white font-semibold">Nothing grounded to show</p>
+                <p>{emptyMessage}</p>
+              </div>
+            </div>
+          )}
           {use2DMode ? (
             <Accessible2DOrbitFallback
               nodes={normalizedNodes}
+              edges={edges}
               centerTitle={centerTitle}
               selectedNode={selectedNode}
               searchQuery={searchQuery}
@@ -803,11 +941,11 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-semibold text-white">{hoveredNode.label}</span>
-                    <span className="font-mono text-[10px] text-[#a7d0d2]">{hoveredNode.cluster}</span>
+                    <span className="font-mono text-[10px] text-[#a7d0d2]">{hoveredNode.kind}</span>
                   </div>
                   <div className="flex items-center gap-3 text-[10px] text-[#98a6b0] font-mono">
-                    <span>Relevance: {Math.round(hoveredNode.relevance * 100)}%</span>
-                    <span>Importance: {Math.round(hoveredNode.importance * 100)}%</span>
+                    <span>{hoveredNode.sources.length} source(s)</span>
+                    <span>{hoveredNode.mentionCount !== null ? `${hoveredNode.mentionCount} mention(s)` : 'mentions not measured'}</span>
                   </div>
                 </div>
               )}
@@ -830,19 +968,8 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
                   </span>
                   <div className="flex items-center gap-1">
                     <span className="rounded px-2 py-0.5 text-[10px] font-mono bg-[#141d26] text-[#a7d0d2] border border-[#4d728e]/40">
-                      {selectedNode.cluster}
+                      {selectedNode.kind}
                     </span>
-                    {selectedNode.evidenceStatus && (
-                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-mono border ${
-                        selectedNode.evidenceStatus.includes('Web')
-                          ? 'bg-cyan-950/60 text-cyan-300 border-cyan-800/40'
-                          : selectedNode.evidenceStatus.includes('Inferred')
-                          ? 'bg-purple-950/60 text-purple-300 border-purple-800/40'
-                          : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
-                      }`}>
-                        {selectedNode.evidenceStatus}
-                      </span>
-                    )}
                   </div>
                 </div>
                 <h3
@@ -875,117 +1002,82 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
               </div>
 
               {/* Tabbed Inspector Navigation */}
-              <div className="grid grid-cols-4 gap-1 p-1 bg-[#101720] rounded-lg border border-white/8 text-[11px] font-mono">
+              <div className="grid grid-cols-3 gap-1 p-1 bg-[#101720] rounded-lg border border-white/8 text-[11px] font-mono">
                 <button
                   type="button"
-                  onClick={() => setActiveInspectorTab('explanation')}
-                  className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded transition-colors ${
-                    activeInspectorTab === 'explanation'
-                      ? 'bg-[#1b2632] text-[#a7d0d2] font-semibold border border-[#a7d0d2]/40 shadow-xs'
-                      : 'text-[#f3faf0]/60 hover:text-white hover:bg-white/5'
-                  }`}
-                  title="Detailed technical explanation"
+                  onClick={() => setActiveInspectorTab('details')}
+                  className={tabClass(activeInspectorTab === 'details')}
+                  title="What this node is"
                 >
                   <FileText className="w-3 h-3" />
-                  <span>Explain</span>
+                  <span>Details</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveInspectorTab('sources')}
-                  className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded transition-colors ${
-                    activeInspectorTab === 'sources'
-                      ? 'bg-[#1b2632] text-[#a7d0d2] font-semibold border border-[#a7d0d2]/40 shadow-xs'
-                      : 'text-[#f3faf0]/60 hover:text-white hover:bg-white/5'
-                  }`}
-                  title="Grounded chunk passages"
+                  className={tabClass(activeInspectorTab === 'sources')}
+                  title="Source passages attached to this node"
                 >
                   <Bookmark className="w-3 h-3" />
                   <span>Sources</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveInspectorTab('scores')}
-                  className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded transition-colors ${
-                    activeInspectorTab === 'scores'
-                      ? 'bg-[#1b2632] text-[#a7d0d2] font-semibold border border-[#a7d0d2]/40 shadow-xs'
-                      : 'text-[#f3faf0]/60 hover:text-white hover:bg-white/5'
-                  }`}
-                  title="Hybrid retrieval metrics"
-                >
-                  <BarChart3 className="w-3 h-3" />
-                  <span>Scores</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveInspectorTab('confidence')}
-                  className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded transition-colors ${
-                    activeInspectorTab === 'confidence'
-                      ? 'bg-[#1b2632] text-[#a7d0d2] font-semibold border border-[#a7d0d2]/40 shadow-xs'
-                      : 'text-[#f3faf0]/60 hover:text-white hover:bg-white/5'
-                  }`}
-                  title="Confidence & Evidence"
+                  onClick={() => setActiveInspectorTab('evidence')}
+                  className={tabClass(activeInspectorTab === 'evidence')}
+                  title="Evidence status of this node and its connections"
                 >
                   <ShieldCheck className="w-3 h-3" />
                   <span>Evidence</span>
                 </button>
               </div>
 
-              {/* TAB 1: EXPLANATION */}
-              {activeInspectorTab === 'explanation' && (
-                <div className="space-y-2.5">
-                  {(selectedNode.definition || selectedNode.explanation) && (
-                    <div className="p-2.5 rounded-lg bg-[#141d26]/80 border border-white/5 space-y-1 text-xs">
-                      {selectedNode.definition && (
-                        <p className="font-medium text-[#a7d0d2] text-[11px] leading-snug">
-                          {selectedNode.definition}
-                        </p>
-                      )}
-                      {selectedNode.explanation && (
-                        <p className="text-[#f3faf0]/75 text-[11px] leading-relaxed">
-                          {selectedNode.explanation}
-                        </p>
-                      )}
-                    </div>
-                  )}
+              {/* TAB 1: DETAILS */}
+              {activeInspectorTab === 'details' && (
+                <div className="space-y-2.5 text-[11px]">
+                  <div className="p-2.5 rounded-lg bg-[#141d26]/80 border border-white/5 space-y-1">
+                    <p className="font-medium text-[#a7d0d2] leading-snug">{selectedNode.kind}</p>
+                    <p className="text-[#f3faf0]/75 leading-relaxed">{describeNodeOrigin(selectedNode.origin)}</p>
+                    {selectedNode.detail && (
+                      <p className="text-[#f3faf0]/75 leading-relaxed">{selectedNode.detail}</p>
+                    )}
+                  </div>
 
-                  {selectedNode.whyItMatters && (
-                    <div className="p-2.5 rounded-lg bg-[#0e1620] border border-[#4d728e]/25 text-[11px] space-y-0.5">
-                      <span className="font-semibold text-emerald-400 font-mono text-[10px] uppercase block">
-                        Contextual Relevance
+                  <div className="p-2.5 rounded-lg bg-[#0e1620] border border-white/5 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-[#98a6b0]">
+                        <BarChart3 className="h-3 w-3" />
+                        Mention count
                       </span>
-                      <p className="text-[#f3faf0]/80 leading-relaxed">
-                        {selectedNode.whyItMatters}
+                      <span className="font-mono text-[#a7d0d2]">
+                        {selectedNode.mentionCount !== null ? selectedNode.mentionCount : 'not measured'}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-[#98a6b0]">Where it appears</span>
+                      <span className="font-mono text-[#a7d0d2] text-right">
+                        {summarizePages(selectedNode.sources || [])}
+                      </span>
+                    </div>
+                  </div>
+
+                  {firstPassage && (
+                    <div className="p-2.5 rounded-lg bg-[#111922] border border-white/5 space-y-1">
+                      <span className="font-semibold text-[#a7d0d2] font-mono text-[10px] uppercase block">
+                        Example in the text
+                      </span>
+                      <p className="text-[#f3faf0]/80 italic leading-relaxed">
+                        "{highlightPassage(firstPassage, selectedNode.label)}"
                       </p>
                     </div>
                   )}
 
-                  {selectedNode.mechanismSteps && selectedNode.mechanismSteps.length > 0 && (
-                    <div className="p-2.5 rounded-lg bg-[#111922] border border-white/5 text-[11px] space-y-1">
-                      <span className="font-semibold text-[#f59e0b] font-mono text-[10px] uppercase block">
-                        Step-by-Step Mechanism
+                  {connectedLabels.length > 0 && (
+                    <div className="p-2.5 rounded-lg bg-[#111922] border border-white/5 space-y-1">
+                      <span className="font-semibold text-[#a7d0d2] font-mono text-[10px] uppercase block">
+                        Connected concepts
                       </span>
-                      <ol className="list-decimal list-inside space-y-1 text-[#f3faf0]/75">
-                        {selectedNode.mechanismSteps.map((step, sIdx) => (
-                          <li key={`step-${sIdx}`} className="leading-snug">{step}</li>
-                        ))}
-                      </ol>
-                    </div>
-                  )}
-
-                  {selectedNode.equations && selectedNode.equations.length > 0 && (
-                    <div className="p-2.5 rounded-lg bg-[#111922] border border-white/5 text-[11px] space-y-1">
-                      <span className="font-semibold text-purple-300 font-mono text-[10px] uppercase block">
-                        Mathematical Formulation
-                      </span>
-                      {selectedNode.equations.map((eq, eIdx) => (
-                        <div key={`eq-${eIdx}`} className="space-y-0.5">
-                          <p className="font-mono text-[10px] text-[#a7d0d2]">{eq.name}</p>
-                          <code className="block bg-black/40 p-1.5 rounded font-mono text-[10px] text-amber-200 overflow-x-auto">
-                            {eq.formula}
-                          </code>
-                          <p className="text-[10px] text-[#f3faf0]/60 italic">{eq.explanation}</p>
-                        </div>
-                      ))}
+                      <p className="text-[#f3faf0]/80 leading-relaxed">{connectedLabels.join(', ')}</p>
                     </div>
                   )}
 
@@ -998,7 +1090,7 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
                         className="inline-flex items-center gap-1.5 text-[11px] text-[#a7d0d2] hover:text-white underline font-mono"
                       >
                         <ExternalLink className="h-3 w-3" />
-                        Open External Source ({selectedNode.url.slice(0, 32)}...)
+                        Open external source ({selectedNode.url.slice(0, 32)}...)
                       </a>
                     </div>
                   )}
@@ -1011,7 +1103,7 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
                   <div className="flex items-center justify-between text-xs font-semibold text-white pb-1 border-b border-white/5">
                     <div className="flex items-center gap-1.5">
                       <Bookmark className="h-3.5 w-3.5 text-[#a7d0d2]" />
-                      <span>Verified Evidence Passages</span>
+                      <span>Source passages</span>
                     </div>
                     {onOpenSources && (
                       <button
@@ -1035,7 +1127,9 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
                         >
                           <div className="flex items-center justify-between text-[10px] font-mono text-[#a7d0d2]">
                             <span className="truncate max-w-[130px] font-semibold">{src.document || centerTitle}</span>
-                            <span className="text-[#98a6b0]">Page {src.page}</span>
+                            <span className="text-[#98a6b0]">
+                              {src.page !== null && src.page !== undefined && src.page !== '' ? `Page ${src.page}` : 'Page unknown'}
+                            </span>
                           </div>
                           {src.passage ? (
                             <blockquote
@@ -1046,7 +1140,7 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
                             </blockquote>
                           ) : (
                             <p className="text-[10px] text-[#98a6b0] italic">
-                              Grounding verified in chunk {src.chunk_id || 'reference'}.
+                              Passage text not returned{src.chunk_id ? ` (chunk ${src.chunk_id})` : ''}.
                             </p>
                           )}
                         </div>
@@ -1054,134 +1148,49 @@ export const ConceptGraph3D: React.FC<ConceptGraph3DProps> = ({
                     </div>
                   ) : (
                     <p className="text-xs text-[#98a6b0] italic py-3 text-center">
-                      Evidence verified directly from central document ontology.
+                      No source passages are attached to this node.
                     </p>
                   )}
                 </div>
               )}
 
-              {/* TAB 3: HYBRID RETRIEVAL SCORES */}
-              {activeInspectorTab === 'scores' && (
-                <div className="space-y-2.5 text-xs">
-                  <div className="p-2.5 rounded-lg bg-[#141d26]/90 border border-white/6 space-y-2">
+              {/* TAB 3: EVIDENCE */}
+              {activeInspectorTab === 'evidence' && (
+                <div className="space-y-2 text-xs">
+                  <div className="p-2.5 rounded-lg bg-[#141d26]/90 border border-white/6 space-y-1.5 text-[11px]">
                     <span className="text-[10px] font-mono uppercase text-[#a7d0d2] font-semibold block">
-                      Multi-Stage Fusion Metrics
+                      Where this node comes from
                     </span>
-
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      <div className="p-2 rounded bg-black/25 border border-white/5">
-                        <span className="text-[10px] text-[#98a6b0] block font-mono">BM25 Lexical</span>
-                        <span className="font-mono text-[#a7d0d2] font-semibold text-xs">
-                          {(selectedNode.relevance * 14.8).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="p-2 rounded bg-black/25 border border-white/5">
-                        <span className="text-[10px] text-[#98a6b0] block font-mono">FAISS Cosine</span>
-                        <span className="font-mono text-emerald-400 font-semibold text-xs">
-                          {(0.72 + selectedNode.relevance * 0.25).toFixed(3)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      <div className="p-2 rounded bg-black/25 border border-white/5">
-                        <span className="text-[10px] text-[#98a6b0] block font-mono">RRF Fusion Score</span>
-                        <span className="font-mono text-purple-300 font-semibold text-xs">
-                          {(1.0 / (60 + Math.max(1, Math.round((1 - selectedNode.relevance) * 10)))).toFixed(4)}
-                        </span>
-                      </div>
-                      <div className="p-2 rounded bg-black/25 border border-white/5">
-                        <span className="text-[10px] text-[#98a6b0] block font-mono">Graph Centrality</span>
-                        <span className="font-mono text-[#f59e0b] font-semibold text-xs">
-                          {Math.round(selectedNode.relevance * selectedNode.importance * 100)}%
-                        </span>
-                      </div>
-                    </div>
+                    <p className="text-[#f3faf0]/80 leading-relaxed">{describeNodeOrigin(selectedNode.origin)}</p>
+                    <p className="text-[#98a6b0]">
+                      Source passages attached:{' '}
+                      <span className="font-mono text-[#a7d0d2]">{selectedNode.sources?.length || 0}</span>
+                    </p>
                   </div>
 
                   <div className="p-2.5 rounded-lg bg-[#0e1620] border border-white/5 space-y-2">
-                    <div>
-                      <div className="flex justify-between text-[11px] text-[#98a6b0] mb-1">
-                        <span>Domain Relevance</span>
-                        <span className="font-mono text-[#a7d0d2]">
-                          {Math.round(selectedNode.relevance * 100)}%
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full bg-[#141d26] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#a7d0d2] rounded-full"
-                          style={{ width: `${selectedNode.relevance * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-[9px] text-[#98a6b0] mt-0.5 block">
-                        Orbit radius = {(selectedNode.radius).toFixed(2)} units
-                      </span>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between text-[11px] text-[#98a6b0] mb-1">
-                        <span>Structural Importance</span>
-                        <span className="font-mono text-[#f59e0b]">
-                          {Math.round(selectedNode.importance * 100)}%
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full bg-[#141d26] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#f59e0b] rounded-full"
-                          style={{ width: `${selectedNode.importance * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 4: CONFIDENCE & EVIDENCE */}
-              {activeInspectorTab === 'confidence' && (
-                <div className="space-y-2 text-xs">
-                  <div className="p-2.5 rounded-lg bg-[#141d26]/90 border border-white/6 space-y-2">
-                    <span className="text-[10px] font-mono uppercase text-[#a7d0d2] font-semibold block">
-                      Grounding & Verification Health
-                    </span>
-
-                    <div className="space-y-1.5 text-[11px]">
-                      <div className="flex items-center justify-between p-1.5 rounded bg-black/25">
-                        <span className="text-[#98a6b0]">Grounding Status</span>
-                        <span className="font-semibold text-emerald-400 font-mono text-[10px]">
-                          {selectedNode.evidenceStatus || 'Verified Document Evidence'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between p-1.5 rounded bg-black/25">
-                        <span className="text-[#98a6b0]">NLI Claim Entailment</span>
-                        <span className="text-emerald-300 font-mono text-[10px] font-semibold">
-                          Entailed (Passage-Verified)
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between p-1.5 rounded bg-black/25">
-                        <span className="text-[#98a6b0]">Citation Confidence</span>
-                        <span className="text-[#a7d0d2] font-mono text-[10px] font-semibold">
-                          {Math.round(Math.max(88, selectedNode.relevance * 98))}% High
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between p-1.5 rounded bg-black/25">
-                        <span className="text-[#98a6b0]">Hallucination Risk</span>
-                        <span className="text-emerald-400 font-mono text-[10px] font-semibold">
-                          0.0% (Zero-Fabrication)
-                        </span>
-                      </div>
-                    </div>
+                    <span className="text-[10px] font-mono uppercase text-[#98a6b0] block">Connections</span>
+                    {incidentEdges.length > 0 ? (
+                      incidentEdges.map((ie, i) => (
+                        <div key={`inc-${i}`} className="text-[11px] leading-snug">
+                          <p className="text-[#f3faf0]/85">{describeConnection(ie.status, ie.relation, ie.otherLabel)}</p>
+                          <p className="text-[10px] text-[#98a6b0]">{describeEvidenceStatus(ie.status)}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-[11px] text-[#98a6b0] italic">No connections in the data for this node.</p>
+                    )}
                   </div>
 
-                  <div className="p-2.5 rounded-lg bg-[#0e1620] border border-white/5 space-y-1">
-                    <span className="text-[10px] font-mono uppercase text-[#98a6b0] block">
-                      Provenance Anchor
-                    </span>
-                    <p className="text-[11px] text-[#f3faf0]/75 leading-relaxed">
-                      Concept node is directly extracted from and corroborated by{' '}
-                      <span className="text-[#a7d0d2] font-mono">{selectedNode.sources?.length || 1} independent passages</span>{' '}
-                      in <span className="text-white font-medium">{selectedNode.sources?.[0]?.document || centerTitle}</span>.
+                  {incidentEdges.some((ie) => ie.status === 'co_occurrence' || ie.status === 'relation_term_present') && (
+                    <p className="text-[10px] text-[#98a6b0] italic">
+                      Appearing in the same chunk shows the concepts occur together. It does not prove the stated relationship.
                     </p>
-                  </div>
+                  )}
+
+                  <p className="text-[10px] text-[#98a6b0] italic">
+                    No per-node confidence score is shown because none is measured.
+                  </p>
                 </div>
               )}
             </div>

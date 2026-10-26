@@ -28,12 +28,11 @@ def client():
 
 def test_orbit_renders_150_test_nodes_and_lod():
     """
-    ACCEPT check: verify that ConceptGraph3D supports up to 150 nodes with:
-    - Centre = document
-    - Radius = 1 - relevance
-    - Size = importance
-    - Colour = topic cluster
-    - Lines = relations
+    ACCEPT check: ConceptGraph3D supports up to 150 nodes with honest encodings:
+    - Centre = document (or question)
+    - Node size = measured mention_count (uniform when not measured)
+    - Position = free-form layout only (no meaning, no fake relevance rings)
+    - Colour = topic cluster, lines = real edges with evidence_status
     - Level-of-Detail (LOD) handling for 150 nodes
     - OrbitControls with damping
     - Hover tooltip, click inspector, search, play/pause, reset, camera-facing labels
@@ -45,11 +44,28 @@ def test_orbit_renders_150_test_nodes_and_lod():
 
     content = component_file.read_text(encoding="utf-8")
 
-    # 1. Mathematical mappings
-    # Radius = 1 - relevance
-    assert "1 - Math.max(0.05, Math.min(1, relevance))" in content
-    # Size = importance
-    assert "0.2 + Math.max(0.1, Math.min(1, importance))" in content
+    # 1. Honest encodings
+    assert "mention_count" in content
+    assert "layoutPosition" in content
+    assert "evidence_status" in content
+    assert "Page unknown" in content
+    assert "Position is layout only" in content
+
+    # Fabricated scoring and labels must stay gone
+    forbidden = [
+        "1 - Math.max(0.05, Math.min(1, relevance))",
+        "0.2 + Math.max(0.1, Math.min(1, importance))",
+        "relevance * 14.8",
+        "0.72 +",
+        "Math.max(88",
+        "Zero-Fabrication",
+        "Verified Document Evidence",
+        "Orbital Circles Guide Lines",
+        "as any",
+    ]
+    for fake in forbidden:
+        assert fake not in content, f"fabricated behaviour is back in ConceptGraph3D.tsx: {fake}"
+
     # Topic clusters
     assert "CLUSTER_COLORS" in content
     assert "Architecture" in content
@@ -86,26 +102,45 @@ def test_orbit_renders_150_test_nodes_and_lod():
     # 5. Level-of-Detail (LOD) limit for up to 150 nodes
     assert "lodLimit" in content
     assert "150" in content
+    assert "normalizedNodes.length > 50 ? 40 : 150" in content
 
-    # Test generating 150 nodes dataset
-    nodes_150 = [
-        {
-            "id": f"concept_{i}",
-            "label": f"Concept {i}",
-            "cluster": ["Architecture", "Method", "Theory", "Metric", "General"][i % 5],
-            "relevance": round(0.1 + (i / 150) * 0.9, 3),
-            "importance": round(0.2 + (i % 10) * 0.08, 3),
-            "sources": [{"document": "test.pdf", "page": (i % 20) + 1, "chunk_id": f"c_{i}", "passage": f"Passage {i}"}],
-        }
-        for i in range(150)
+
+def test_orbit_graph_builder_has_no_fabricated_content():
+    """
+    The chat orbit builder must only use data the message carries: no canned
+    filler nodes, no invented pages or chunk ids, no fake verification labels.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    builder_file = repo_root / "frontend" / "src" / "lib" / "orbitGraphBuilder.ts"
+    assert builder_file.exists(), f"orbitGraphBuilder.ts not found at {builder_file}"
+
+    content = builder_file.read_text(encoding="utf-8")
+
+    forbidden = [
+        "SYSTEM_CAPABILITY",
+        "Hybrid Retrieval",
+        "Multi-Hop Reasoning Engine",
+        "Calibrated Confidence Framework",
+        "Verified Document Evidence",
+        "mechanismSteps",
+        "92/100",
+        "chunk_method_",
+        "chunk_finding_",
+        "comp_chunk",
+        "VALIDATES",
+        "page: s.page || 1",
+        "relevance:",
+        "importance:",
+        "as any",
     ]
-    assert len(nodes_150) == 150
-    # Radius must be inversely related to relevance
-    first_node = nodes_150[0]
-    last_node = nodes_150[-1]
-    radius_first = 2.4 + (1 - first_node["relevance"]) * 6.0
-    radius_last = 2.4 + (1 - last_node["relevance"]) * 6.0
-    assert radius_first > radius_last  # Low relevance = larger radius; High relevance = closer radius
+    for fake in forbidden:
+        assert fake not in content, f"fabricated content is back in orbitGraphBuilder.ts: {fake}"
+
+    # Honest markers
+    assert "retrieved_for" in content
+    assert "unverified" in content
+    assert "no_grounded_concepts" in content
+    assert "page: null" in content
 
 
 def test_orbit_keyboard_accessible_fallback():

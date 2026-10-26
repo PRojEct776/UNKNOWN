@@ -25,6 +25,7 @@ import { KnowledgeMindMap } from '../visualization/KnowledgeMindMap';
 import { KnowledgeDNA } from '../visualization/KnowledgeDNA';
 import { ConceptGraph3D } from '../ConceptGraph3D';
 import { buildOrbitGraphFromMessage } from '../../lib/orbitGraphBuilder';
+import { OverviewOrbitModal } from './OverviewOrbitModal';
 import { submitFeedback } from '../../lib/api';
 import { downloadResultExport, exportResultToMarkdown, exportResultToPrintableHtml } from '../../lib/exportUtils';
 
@@ -50,7 +51,9 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
     const ov = message.overview;
     const questions = ov?.questions_it_can_answer || ov?.suggested_questions || [];
     const findings = ov?.main_findings || ov?.summary_sentences?.map((s) => s.text) || [];
-    const methods = ov?.methods_and_investigations || ov?.key_topics || [];
+    // The backend does not generate methods; key_topics are unlabelled keywords,
+    // so they are never shown under a Methods heading.
+    const methods = ov?.methods_and_investigations || [];
 
     return (
       <div className="py-4 px-3 sm:px-6">
@@ -151,9 +154,12 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               <Orbit className="w-3.5 h-3.5 text-[#d2434e] group-hover:rotate-45 transition-transform" />
               <span className="font-medium">Explore Overview in 3D Knowledge Orbit</span>
             </button>
-            <span className="text-[10px] text-[#f3faf0]/50 font-mono">
-              {buildOrbitGraphFromMessage(message).total_nodes} nodes in the orbit view
-            </span>
+            {showOrbitModal && (
+              <OverviewOrbitModal
+                documentName={ov?.document_name || message.documentName || ''}
+                onClose={() => setShowOrbitModal(false)}
+              />
+            )}
           </div>
         </div>
       </div>

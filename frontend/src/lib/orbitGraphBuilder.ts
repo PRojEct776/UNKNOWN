@@ -1,357 +1,273 @@
 import type { ChatMessage } from '../types/chat';
 import type {
-  BackendConceptGraphResponse,
-  BackendConceptGraphNode,
   BackendConceptGraphEdge,
+  BackendConceptGraphNode,
+  BackendConceptGraphResponse,
+  BackendConceptSource,
 } from './api';
 
 /**
- * Builds a dynamic, evidence-grounded 3D Knowledge Orbit concept graph
- * from a ChatMessage (either an Assistant answer or a Document Overview).
- * Satisfies Phase 2 Requirements 2, 3, 4:
- * - Central node: Current research inquiry or document core
- * - Level 1: Core concepts, methods, architectures, or findings
- * - Level 2: Subcomponents, mechanisms, equations, assumptions
- * - Evidence nodes: Supporting passages with page numbers or live web URLs
- * - Relationship edges: Explicit evidence-backed links
+ * Builds the node/edge data for the Knowledge Orbit from a chat message.
+ *
+ * Integrity rules:
+ * - Nodes come only from data the message actually carries (answer sources,
+ *   comparison verdicts, overview key topics). Nothing is invented.
+ * - Unknown pages are null, missing passages stay missing, no fake chunk ids.
+ * - relevance/importance are never set (the backend does not measure them).
+ * - No filler nodes: if there is nothing grounded, the graph is empty.
+ * - The centre node has id "root" and is excluded from the orbiting set.
  */
+
+/** Orbit-only extras on top of the backend node shape (not backend fields). */
+export interface OrbitGraphNode extends BackendConceptGraphNode {
+  url?: string;
+  detail?: string;
+}
+
+const MAX_SOURCE_NODES = 12;
+const MAX_COMPARISON_NODES = 6;
+const MAX_OVERVIEW_TOPICS = 12;
+
+interface RawSource {
+  origin?: unknown;
+  url?: unknown;
+  title?: unknown;
+  document?: unknown;
+  documentName?: unknown;
+  page?: unknown;
+  chunkId?: unknown;
+  chunk_id?: unknown;
+  passage?: unknown;
+  quote?: unknown;
+  hybridScore?: unknown;
+  hybrid_score?: unknown;
+  venue?: unknown;
+}
+
+interface RawComparisonPair {
+  sub_question?: unknown;
+  label?: unknown;
+  doc_quote?: unknown;
+  web_quote?: unknown;
+  doc_source?: unknown;
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+}
+
+/** Trimmed string, or '' for non-strings and placeholder values. */
+function cleanText(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const t = value.trim();
+  return /^(n\/a|unknown|none|null)$/i.test(t) ? '' : t;
+}
+
+/** Real page number/label, or null when unknown. Never guessed. */
+function cleanPage(value: unknown): number | string | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  const text = cleanText(value);
+  if (!text) return null;
+  const asNumber = Number(text);
+  return Number.isFinite(asNumber) && asNumber > 0 ? asNumber : text;
+}
+
+function isExternal(s: RawSource): boolean {
+  return s.origin === 'web' || s.origin === 'scholarly' || cleanText(s.url) !== '';
+}
+
+function finish(
+  documentTitle: string,
+  nodes: OrbitGraphNode[],
+  edges: BackendConceptGraphEdge[],
+): BackendConceptGraphResponse {
+  // total_nodes counts orbiting nodes only (the centre node is not counted).
+  const orbiting = Math.max(0, nodes.length - 1);
+  return {
+    document: documentTitle,
+    nodes,
+    edges,
+    total_nodes: orbiting,
+    total_edges: edges.length,
+    status: orbiting > 0 ? 'ok' : 'empty',
+    empty_reason: orbiting > 0 ? null : 'no_grounded_concepts',
+    from_cache: false,
+  };
+}
+
 export function buildOrbitGraphFromMessage(message: ChatMessage): BackendConceptGraphResponse {
-  const nodes: BackendConceptGraphNode[] = [];
+  const nodes: OrbitGraphNode[] = [];
   const edges: BackendConceptGraphEdge[] = [];
 
   // =========================================================================
-  // Case A: Document Overview Message
+  // Case A: Document overview message (heuristic topics only)
   // =========================================================================
   if (message.sender === 'overview' && message.overview) {
     const ov = message.overview;
-    const centerTitle = ov.title || message.documentName || 'Document Overview';
+    const centerTitle = cleanText(ov.title) || cleanText(message.documentName) || 'Document';
 
-    // 1. Central Node (Topic / Document)
     nodes.push({
       id: 'root',
       label: centerTitle,
       cluster: 'General',
-      relevance: 1.0,
-      importance: 1.0,
+      origin: 'document',
       sources: [],
-      definition: `Comprehensive structural analysis and synthesis for ${centerTitle}.`,
-      explanation:
-        ov.executive_summary ||
-        ov.summary_sentences?.map((s) => s.text).join(' ') ||
-        'Grounded multi-section document overview generated from verified document chunks.',
-      whyItMatters: 'Serves as the gravitational and thematic center for all extracted concepts, findings, and methods.',
-      evidenceStatus: 'Verified Document Evidence',
-    } as any);
-
-    // 2. Methods / Investigations
-    const methods = ov.methods_and_investigations || ov.key_topics || [];
-    methods.slice(0, 4).forEach((m, idx) => {
-      const id = `method_${idx + 1}`;
-      nodes.push({
-        id,
-        label: m,
-        cluster: 'Method',
-        relevance: 0.9 - idx * 0.05,
-        importance: 0.85,
-        sources: [
-          {
-            document: message.documentName || centerTitle,
-            page: idx + 1,
-            chunk_id: `chunk_method_${idx}`,
-            passage: `Primary methodological pipeline and experimental investigation: ${m}.`,
-          },
-        ],
-        definition: `Investigative technique or experimental protocol: ${m}`,
-        explanation: `Formally examined in ${centerTitle} to evaluate structural performance and validate empirical hypotheses.`,
-        mechanismSteps: [
-          `Phase 1: Input data preprocessing and normalization.`,
-          `Phase 2: Execution of ${m} across controlled experimental baselines.`,
-          `Phase 3: Statistical convergence and evaluation against ground truth.`,
-        ],
-        whyItMatters: 'Provides the empirical foundation and methodological rigor for reported results.',
-        evidenceStatus: 'Verified Document Evidence',
-      } as any);
-
-      edges.push({
-        source: 'root',
-        target: id,
-        relation: 'UTILIZES_METHOD',
-        sources: [],
-      });
     });
 
-    // 3. Main Findings & Conclusions
-    const findings = ov.main_findings || ov.summary_sentences?.map((s) => s.text) || [];
-    findings.slice(0, 4).forEach((f, idx) => {
-      const id = `finding_${idx + 1}`;
-      nodes.push({
-        id,
-        label: f.length > 50 ? `${f.slice(0, 48)}...` : f,
-        cluster: 'Theory',
-        relevance: 0.85 - idx * 0.05,
-        importance: 0.8,
-        sources: [
-          {
-            document: message.documentName || centerTitle,
-            page: idx + 1,
-            chunk_id: `chunk_finding_${idx}`,
-            passage: f,
-          },
-        ],
-        definition: 'Empirical conclusion or core theoretical finding',
-        explanation: f,
-        whyItMatters: 'Directly answers the central research questions and establishes key benchmarks.',
-        evidenceStatus: 'Verified Document Evidence',
-      } as any);
-
-      edges.push({
-        source: 'root',
-        target: id,
-        relation: 'CONCLUDES',
-        sources: [],
-      });
-
-      // Link findings to related methods
-      if (methods.length > 0) {
-        const methodTarget = `method_${(idx % methods.length) + 1}`;
-        edges.push({
-          source: methodTarget,
-          target: id,
-          relation: 'VALIDATES',
-          sources: [],
-        });
-      }
-    });
-
-    // 4. Equations or Metrics (if available in Document IQ)
-    const iq = ov.document_iq;
-    if (iq) {
-      nodes.push({
-        id: 'metric_iq',
-        label: `Document IQ: ${iq.iq_score ?? iq.grade ?? '92/100'}`,
-        cluster: 'Metric',
-        relevance: 0.75,
-        importance: 0.7,
-        sources: [],
-        definition: 'Multi-dimensional document intelligibility and empirical rigor score.',
-        explanation: `Calculated from structural readability, mathematical density, source citations, and methodological coherence.`,
-        whyItMatters: 'Quantifies academic clarity, citation density, and reproducibility.',
-        equations: [
-          {
-            name: 'Document IQ Formulation',
-            formula: 'IQ = 100 * (0.35 * Readability + 0.35 * MethodRigor + 0.30 * CitationDensity)',
-            explanation: 'Calibrated composite benchmark across structural features.',
-          },
-        ],
-        evidenceStatus: 'Verified Document Evidence',
-      } as any);
-
-      edges.push({
-        source: 'root',
-        target: 'metric_iq',
-        relation: 'EVALUATED_BY',
-        sources: [],
-      });
+    const rawTopics = Array.isArray(ov.key_topics) ? ov.key_topics : [];
+    const seen = new Set<string>();
+    const topics: string[] = [];
+    for (const t of rawTopics) {
+      const label = cleanText(t);
+      const key = label.toLowerCase();
+      if (!label || seen.has(key)) continue;
+      seen.add(key);
+      topics.push(label);
     }
 
-    return {
-      document: centerTitle,
-      nodes,
-      edges,
-      total_nodes: nodes.length,
-      total_edges: edges.length,
-      from_cache: false,
-    };
+    topics.slice(0, MAX_OVERVIEW_TOPICS).forEach((label, idx) => {
+      const id = `topic_${idx + 1}`;
+      nodes.push({
+        id,
+        label: truncate(label, 40),
+        cluster: 'Method',
+        origin: 'overview_topic',
+        sources: [],
+        detail:
+          'Listed as a key topic in the document overview. This is a heuristic topic list: no passage, page or chunk is attached to it.',
+      });
+      edges.push({
+        source: 'root',
+        target: id,
+        relation: 'listed_topic',
+        evidence_status: 'unverified',
+        origin: 'overview_topic',
+        sources: [],
+      });
+    });
+
+    return finish(centerTitle, nodes, edges);
   }
 
   // =========================================================================
-  // Case B: Research Assistant / Answer Message
+  // Case B: Answer message (question + only the sources the answer returned)
   // =========================================================================
   const res = message.result;
-  const centerTitle = message.text ? (message.text.length > 40 ? `${message.text.slice(0, 38)}...` : message.text) : 'Research Inquiry';
+  const questionText = cleanText(message.text);
+  const centerTitle = questionText ? truncate(questionText, 40) : 'Research question';
 
-  // 1. Central Topic Node
   nodes.push({
     id: 'root',
     label: centerTitle,
     cluster: 'General',
-    relevance: 1.0,
-    importance: 1.0,
+    origin: 'question',
     sources: [],
-    definition: `Central research query: "${message.text || 'Document Research'}"`,
-    explanation: res?.answer || 'Evidence-grounded dual-retrieval synthesis.',
-    whyItMatters: 'The central inquiry governing the candidate retrieval, reranking, and verification pipeline.',
-    evidenceStatus: 'Verified Document Evidence',
-  } as any);
-
-  // 2. Extract Document Sources as Evidence Nodes
-  const sources = res?.sources || [];
-  const docSources = sources.filter((s: any) => s.origin !== 'web' && (s.document || s.title));
-  docSources.slice(0, 4).forEach((s: any, idx: number) => {
-    const id = `doc_src_${idx + 1}`;
-    const docName = s.document || s.title || 'Document';
-    const pageStr = s.page ? ` (p.${s.page})` : '';
-    const label = `${docName}${pageStr}`;
-
-    nodes.push({
-      id,
-      label: label.length > 36 ? `${label.slice(0, 34)}...` : label,
-      cluster: 'Architecture',
-      relevance: Math.max(0.65, Math.min(0.95, s.hybrid_score || s.reliability || 0.85)),
-      importance: 0.8,
-      sources: [
-        {
-          document: docName,
-          page: s.page || 1,
-          chunk_id: s.chunk_id || `chunk_${idx}`,
-          passage: s.passage || s.quote || s.text || '',
-        },
-      ],
-      definition: `Grounded evidence passage from ${docName}`,
-      explanation: s.passage || s.quote || 'Evidence chunk retrieved via BM25 + FAISS hybrid search.',
-      whyItMatters: `Provides primary grounding for the synthesized answer. Hybrid retrieval score: ${(s.hybrid_score || 0).toFixed(4)}.`,
-      evidenceStatus: 'Verified Document Evidence',
-    } as any);
-
-    edges.push({
-      source: 'root',
-      target: id,
-      relation: 'SUPPORTED_BY_DOC',
-      sources: [],
-    });
   });
 
-  // 3. Extract Web Sources as External Evidence Nodes
-  const webSources = sources.filter((s: any) => s.origin === 'web' || s.url);
-  webSources.slice(0, 3).forEach((s: any, idx: number) => {
-    const id = `web_src_${idx + 1}`;
-    const webTitle = s.title || s.document || 'External Web Finding';
-    nodes.push({
-      id,
-      label: `[Web] ${webTitle.length > 28 ? `${webTitle.slice(0, 26)}...` : webTitle}`,
-      cluster: 'Metric',
-      relevance: Math.max(0.6, Math.min(0.9, s.reliability || 0.75)),
-      importance: 0.75,
-      url: s.url,
-      sources: [
-        {
-          document: webTitle,
-          page: 'Web URL',
-          chunk_id: s.chunk_id || `web_${idx}`,
-          passage: s.passage || s.quote || '',
-        },
-      ],
-      definition: `External corroborating research from ${s.venue || 'web repository'}`,
-      explanation: s.passage || 'Real-time retrieved academic or web literature.',
-      whyItMatters: `Cross-validates document evidence against external published literature.`,
-      evidenceStatus: 'Live Web Evidence',
-    } as any);
+  const rawSources = (res?.sources ?? []) as unknown as RawSource[];
+  const ordered = [
+    ...rawSources.filter((s) => !isExternal(s)),
+    ...rawSources.filter((s) => isExternal(s)),
+  ];
 
-    edges.push({
-      source: 'root',
-      target: id,
-      relation: 'EXTERNAL_CORROBORATION',
-      sources: [],
-    });
-  });
+  ordered.slice(0, MAX_SOURCE_NODES).forEach((s, idx) => {
+    const external = isExternal(s);
+    const name =
+      cleanText(s.documentName) || cleanText(s.document) || cleanText(s.title) || 'Unknown source';
+    const page = cleanPage(s.page);
+    const chunkId = cleanText(s.chunkId) || cleanText(s.chunk_id);
+    const passage = cleanText(s.passage) || cleanText(s.quote);
+    const score =
+      typeof s.hybridScore === 'number'
+        ? s.hybridScore
+        : typeof s.hybrid_score === 'number'
+        ? s.hybrid_score
+        : null;
+    const url = cleanText(s.url);
+    const venue = cleanText(s.venue);
+    const id = `${external ? 'web' : 'doc'}_src_${idx + 1}`;
+    const location = page !== null ? ` (p.${page})` : chunkId ? ` [${chunkId}]` : '';
 
-  // 4. Claims & Comparison Pairs (Theories / Hypotheses)
-  const comparison = res?.comparison || [];
-  comparison.slice(0, 3).forEach((cp: any, idx: number) => {
-    const id = `comp_${idx + 1}`;
-    const subQ = cp.sub_question || `Comparative Insight ${idx + 1}`;
-    const label = cp.label === 'agree' ? 'Consensus' : cp.label === 'disagree' ? 'Divergence' : 'Unaddressed';
+    const source: BackendConceptSource = {
+      document: name,
+      page,
+      chunk_id: chunkId,
+      passage: passage || undefined,
+    };
 
-    nodes.push({
-      id,
-      label: `${label}: ${subQ.length > 28 ? `${subQ.slice(0, 26)}...` : subQ}`,
-      cluster: 'Theory',
-      relevance: 0.82,
-      importance: 0.8,
-      sources: [
-        {
-          document: cp.doc_source || 'Doc Channel',
-          page: 1,
-          chunk_id: 'comp_chunk',
-          passage: `Doc quote: "${cp.doc_quote}"\nWeb quote: "${cp.web_quote}"`,
-        },
-      ],
-      definition: `Cross-channel NLI verdict (${label.toUpperCase()}) between document and web channels`,
-      explanation: `For sub-question "${subQ}", document states: "${cp.doc_quote || 'N/A'}" while external sources state: "${cp.web_quote || 'N/A'}".`,
-      whyItMatters: `Identifies empirical consensus or contradictions between internal corpus and external knowledge.`,
-      evidenceStatus: cp.label === 'agree' ? 'Verified Document Evidence' : 'Inferred Relationship',
-    } as any);
-
-    edges.push({
-      source: 'root',
-      target: id,
-      relation: 'CROSS_CHANNEL_NLI',
-      sources: [],
-    });
-
-    if (docSources.length > 0) {
-      edges.push({
-        source: id,
-        target: `doc_src_1`,
-        relation: 'GROUNDED_IN',
-        sources: [],
-      });
+    const detailParts: string[] = ['Retrieved for this question.'];
+    if (score !== null) {
+      detailParts.push(`Retrieval score ${score.toFixed(4)} (a ranking score, not a relevance percentage).`);
     }
+    if (venue) detailParts.push(`Venue: ${venue}.`);
+
+    nodes.push({
+      id,
+      label: truncate(`${external ? '[Web] ' : ''}${name}${location}`, 40),
+      cluster: external ? 'Metric' : 'Architecture',
+      origin: external ? 'web_source' : 'answer_source',
+      sources: [source],
+      detail: detailParts.join(' '),
+      url: url || undefined,
+    });
+
+    edges.push({
+      source: 'root',
+      target: id,
+      relation: 'retrieved_for',
+      evidence_status: 'retrieved',
+      origin: external ? 'web_source' : 'answer_source',
+      sources: [source],
+    });
   });
 
-  // 5. Fallback nodes if fewer than 3 nodes were extracted
-  if (nodes.length <= 1) {
-    const fallbackConcepts = [
-      {
-        name: 'Hybrid Retrieval (BM25 + FAISS)',
-        cluster: 'Method',
-        def: 'Dual lexical and semantic vector retrieval pipeline with Reciprocal Rank Fusion.',
-        exp: 'Combines BM25 keyword matching with dense FAISS vector embeddings to maximize candidate recall.',
-      },
-      {
-        name: 'Multi-Hop Reasoning Engine',
-        cluster: 'Theory',
-        def: 'Deconstructs complex research queries into structured sub-hypotheses.',
-        exp: 'Sequentially resolves inter-concept dependencies before synthesizing final grounded answers.',
-      },
-      {
-        name: 'Calibrated Confidence Framework',
-        cluster: 'Metric',
-        def: 'Deterministic 4-variable scoring across coverage, claim support, agreement, and source reliability.',
-        exp: 'Ensures no hallucinations or unsupported assertions receive artificially inflated confidence.',
-      },
-    ];
+  // Cross-channel comparison verdicts (model output, labelled as such)
+  const pairsRaw = (res as unknown as { comparisonPairs?: unknown } | undefined)?.comparisonPairs;
+  const pairs = Array.isArray(pairsRaw) ? (pairsRaw as RawComparisonPair[]) : [];
 
-    fallbackConcepts.forEach((fc, idx) => {
-      const id = `core_${idx + 1}`;
-      nodes.push({
-        id,
-        label: fc.name,
-        cluster: fc.cluster,
-        relevance: 0.85 - idx * 0.05,
-        importance: 0.8,
-        sources: [],
-        definition: fc.def,
-        explanation: fc.exp,
-        whyItMatters: 'Core architectural pillar ensuring evidence-grounded research answers.',
-        evidenceStatus: 'Verified Document Evidence',
-      } as any);
+  pairs.slice(0, MAX_COMPARISON_NODES).forEach((p, idx) => {
+    const id = `comp_${idx + 1}`;
+    const subQuestion = cleanText(p.sub_question) || `Comparison ${idx + 1}`;
+    const verdict = p.label === 'agree' ? 'Agrees' : p.label === 'disagree' ? 'Disagrees' : 'Not addressed';
+    const docQuote = cleanText(p.doc_quote);
+    const webQuote = cleanText(p.web_quote);
 
-      edges.push({
-        source: 'root',
-        target: id,
-        relation: 'SYSTEM_CAPABILITY',
-        sources: [],
-      });
+    const passageParts: string[] = [];
+    if (docQuote) passageParts.push(`Document: "${docQuote}"`);
+    if (webQuote) passageParts.push(`Web: "${webQuote}"`);
+
+    const sources: BackendConceptSource[] = passageParts.length
+      ? [
+          {
+            document: cleanText(p.doc_source) || 'Document channel',
+            page: null,
+            chunk_id: '',
+            passage: passageParts.join('\n'),
+          },
+        ]
+      : [];
+
+    nodes.push({
+      id,
+      label: truncate(`${verdict}: ${subQuestion}`, 40),
+      cluster: 'Theory',
+      origin: 'comparison',
+      sources,
+      detail:
+        'Cross-channel verdict between the document and web results. It is model-generated and not independently verified.',
     });
-  }
 
-  return {
-    document: centerTitle,
-    nodes,
-    edges,
-    total_nodes: nodes.length,
-    total_edges: edges.length,
-    from_cache: false,
-  };
+    edges.push({
+      source: 'root',
+      target: id,
+      relation: 'cross_channel_comparison',
+      evidence_status: 'model_verdict',
+      origin: 'comparison',
+      sources: [],
+    });
+  });
+
+  return finish(centerTitle, nodes, edges);
 }
