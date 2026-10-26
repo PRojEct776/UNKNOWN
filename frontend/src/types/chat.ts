@@ -1,7 +1,7 @@
 import type { AnalysisMode, WorkspaceResult } from './query';
 import type { BackendDocumentOverview } from '../lib/api';
 
-export type ScopeOption = 'this_document' | 'selected' | 'all' | 'documents_web';
+export type ScopeOption = 'this_document' | 'selected' | 'all' | 'documents_web' | 'web_only';
 
 export interface ChatMessage {
   id: string;

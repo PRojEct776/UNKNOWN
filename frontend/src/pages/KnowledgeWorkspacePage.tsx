@@ -402,14 +402,15 @@ export const KnowledgeWorkspacePage: React.FC = () => {
     const currentWebOnly = currentWeb && !!activeConversation.webOnly;
 
     // Build scope tag
-    const scopeOption: ScopeOption =
-      currentWeb && currentDocs.length > 0
-        ? 'documents_web'
-        : currentDocs.length === 1
-        ? 'this_document'
-        : currentDocs.length > 1
-        ? 'selected'
-        : 'all';
+    const scopeOption: ScopeOption = currentWebOnly
+      ? 'web_only'
+      : currentWeb
+      ? 'documents_web'
+      : currentDocs.length === 1
+      ? 'this_document'
+      : currentDocs.length > 1
+      ? 'selected'
+      : 'all';
 
     // 1. Append User Message
     const userMessage: ChatMessage = {
