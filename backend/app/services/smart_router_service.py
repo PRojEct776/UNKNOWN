@@ -771,10 +771,11 @@ async def stream_run_all_features(
     for idx, feat in enumerate(ALL_FEATURES):
         yield f"data: {json.dumps({'event': 'feature_start', 'feature': feat, 'progress': round(idx / total * 100)})}\n\n"
         try:
-            # Yield execution / result
-            res_summary = f"{feat.title()} ready for {query[:30]}"
-            yield f"data: {json.dumps({'event': 'feature_complete', 'feature': feat, 'status': 'success', 'progress': round((idx + 1) / total * 100), 'result': res_summary})}\n\n"
+            # This stream does not execute the features. Say so instead of
+            # reporting success for work that never ran.
+            note = "Not executed: this stream does not run the feature."
+            yield f"data: {json.dumps({'event': 'feature_complete', 'feature': feat, 'status': 'not_executed', 'progress': round((idx + 1) / total * 100), 'detail': note})}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'event': 'feature_complete', 'feature': feat, 'status': 'error', 'progress': round((idx + 1) / total * 100), 'error': str(exc)})}\n\n"
 
-    yield f"data: {json.dumps({'event': 'run_all_complete', 'status': 'done'})}\n\n"
+    yield f"data: {json.dumps({'event': 'run_all_complete', 'status': 'done', 'features_executed': 0})}\n\n"
