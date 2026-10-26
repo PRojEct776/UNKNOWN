@@ -128,7 +128,7 @@ def test_zero_results_without_failures_is_not_called_an_error(monkeypatch):
     assert _outcomes(statuses) == {"arxiv": "no_results", "crossref": "no_results"}
     gaps = _web_gaps_from_statuses(statuses)
     assert len(gaps) == 1
-    assert gaps[0].startswith("No scholarly web results found")
+    assert gaps[0].startswith("No web results found")
     assert "arXiv" in gaps[0] and "Crossref" in gaps[0]
     assert not any("unavailable" in g for g in gaps)
 

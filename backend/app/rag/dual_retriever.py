@@ -312,12 +312,28 @@ def _extract_verbatim_quote(text: str, max_chars: int = 500) -> str:
 # Connector fan-out (live web fetch in this request)
 # ---------------------------------------------------------------------------
 
+_BASE_CONNECTORS = ["wikipedia", "openalex", "arxiv", "crossref"]
+
+
+def _default_connector_names() -> list[str]:
+    """Scholarly connectors always; Tavily (live web) first when a key is configured."""
+    names = list(_BASE_CONNECTORS)
+    try:
+        from app.connectors import tavily
+
+        if tavily.is_configured():
+            names.insert(0, "tavily")
+    except Exception as exc:
+        logger.debug("Tavily connector unavailable: %s", exc)
+    return names
+
+
 def _load_connectors(names: list[str] | None = None) -> list[Any]:
     """
     Dynamically load connector modules.  Missing optional connectors are skipped
     so one failing connector never breaks the entire request.
     """
-    all_names = names or ["wikipedia", "openalex", "arxiv", "crossref"]
+    all_names = names or _default_connector_names()
     loaded = []
     for name in all_names:
         try:
@@ -334,6 +350,7 @@ _CONNECTOR_LABELS = {
     "openalex": "OpenAlex",
     "arxiv": "arXiv",
     "crossref": "Crossref",
+    "tavily": "Tavily",
 }
 
 
@@ -357,7 +374,7 @@ def _fetch_web_chunks(
     {"connector", "outcome", "count", "detail"} where outcome is one of
     ok, no_results, error, timeout, not_loaded.
     """
-    requested = list(connector_names or ["wikipedia", "openalex", "arxiv", "crossref"])
+    requested = list(connector_names or _default_connector_names())
     connectors = _load_connectors(connector_names)
     loaded_keys = {_connector_key(m) for m in connectors}
     statuses: list[dict] = [
@@ -452,7 +469,7 @@ def _fetch_web_chunks(
 def _web_gaps_from_statuses(statuses: list[dict]) -> list[str]:
     """Turn connector statuses into human-readable gap strings for /answer."""
     if not statuses:
-        return ["Web retrieval was requested but no scholarly web source could be used."]
+        return ["Web retrieval was requested but no web source could be used."]
 
     def label(s: dict) -> str:
         return _CONNECTOR_LABELS.get(s["connector"], s["connector"])
@@ -473,10 +490,10 @@ def _web_gaps_from_statuses(statuses: list[dict]) -> list[str]:
         gaps.append("Web source unavailable: %s %s." % (label(s), reason))
 
     if not reachable:
-        gaps.insert(0, "No scholarly web evidence was retrieved: every web source failed or timed out.")
+        gaps.insert(0, "No web evidence was retrieved: every web source failed or timed out.")
     elif sum(s["count"] for s in statuses) == 0:
         gaps.append(
-            "No scholarly web results found (checked: %s)."
+            "No web results found (checked: %s)."
             % ", ".join(label(s) for s in reachable)
         )
     return gaps
