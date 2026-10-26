@@ -242,9 +242,13 @@ def build_document_metadata(document_name: str, user_id: str = "default_user") -
         else:
             ocr_required = False
             ocr_quality = 1.0
+        # Measured from the share of pages that contain extractable text (not OCR confidence).
+        ocr_basis = "page_text_coverage"
     else:
         ocr_required = False
         ocr_quality = 1.0
+        # No page data was available, so this full credit is a default, not a measurement.
+        ocr_basis = "assumed_no_page_data"
 
     metadata = {
         # --------------------------
@@ -271,6 +275,7 @@ def build_document_metadata(document_name: str, user_id: str = "default_user") -
         **embedding_info,  # Verified later using FAISS metadata.
         "ocr_required": ocr_required,
         "ocr_quality": ocr_quality,
+        "ocr_basis": ocr_basis,
         # --------------------------
         # Metadata Health
         # --------------------------

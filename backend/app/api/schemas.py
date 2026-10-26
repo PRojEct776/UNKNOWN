@@ -612,6 +612,11 @@ class OverviewSentence(BaseModel):
     source_ids: list[int] = Field(default_factory=list)
     quote: str = ""
     page_ref: str = "N/A"
+    support: str = Field(
+        default="grounded",
+        description="grounded = LLM sentence verified against its cited passage; "
+                    "extractive = verbatim sentence copied from a retrieved passage.",
+    )
 
 
 class DocumentIQReport(BaseModel):
@@ -632,6 +637,7 @@ class FigureDetail(BaseModel):
     caption: str = ""
     page: int | str = 1
     thumbnail: str = ""
+    thumbnail_is_placeholder: bool = True  # generic icon, not an image of the real figure
 
 
 class TableDetail(BaseModel):
@@ -640,6 +646,29 @@ class TableDetail(BaseModel):
     caption: str = ""
     page: int | str = 1
     thumbnail: str = ""
+    thumbnail_is_placeholder: bool = True  # generic icon, not an image of the real table
+
+
+class SectionStatus(BaseModel):
+    """Status of one overview section, so a failure in one never hides the others."""
+
+    status: str = Field(
+        default="ok",
+        description="ok | partial | empty | unavailable | failed",
+    )
+    error: str | None = None
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class SuggestedQuestion(BaseModel):
+    """A suggested question with provenance."""
+
+    text: str
+    type: str = Field(
+        default="exploratory",
+        description="grounded = generated from retrieved document passages; "
+                    "exploratory = generic template, not derived from this document.",
+    )
 
 
 class DocumentOverviewResponse(BaseModel):
@@ -660,6 +689,8 @@ class DocumentOverviewResponse(BaseModel):
     key_topics: list[str] = Field(default_factory=list)
     document_iq: dict = Field(default_factory=dict)
     suggested_questions: list[str] = Field(default_factory=list)
+    question_details: list[SuggestedQuestion] = Field(default_factory=list)
+    section_status: dict[str, SectionStatus] = Field(default_factory=dict)
     generated_at: str = ""
     generation_ms: float = 0.0
     from_cache: bool = False
