@@ -35,6 +35,8 @@ export function mapBackendSources(sources: BackendQuerySource[]): Source[] {
     score: typeof s.hybrid_score === 'number' && Number.isFinite(s.hybrid_score) ? s.hybrid_score : undefined,
     bm25Score: typeof s.bm25_score === 'number' && Number.isFinite(s.bm25_score) ? s.bm25_score : undefined,
     faissScore: typeof s.faiss_score === 'number' && Number.isFinite(s.faiss_score) ? s.faiss_score : undefined,
+    passage: s.passage ?? undefined,
+    quote: s.quote ?? undefined,
   }));
 }
 

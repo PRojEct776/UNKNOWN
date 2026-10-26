@@ -171,6 +171,8 @@ export interface BackendQuerySource {
   hybrid_score: number;
   bm25_score: number;
   faiss_score: number;
+  passage?: string | null;
+  quote?: string | null;
 }
 
 /** A single indexed document as returned by GET /documents. */

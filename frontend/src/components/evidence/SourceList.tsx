@@ -237,7 +237,7 @@ export const SourceList: React.FC<SourceListProps> = ({ sources, className = '',
               >
                 <div className="flex items-start gap-1.5">
                   <Quote className="h-3 w-3 shrink-0 text-[#a7d0d2] mt-0.5 opacity-60" />
-                  <p className="italic text-[#c1cbd2]">{passage}</p>
+                  <p className="italic text-[#c1cbd2]">{(() => { const q = (source.quote || '').trim(); const at = q && source.passage ? source.passage.indexOf(q) : -1; if (at < 0 || !source.passage) return passage; return (<>{source.passage.slice(0, at)}<mark data-testid="quote-highlight" className="rounded bg-amber-400/30 px-0.5 text-white" ref={(el) => { el?.scrollIntoView({ block: 'center' }); }}>{q}</mark>{source.passage.slice(at + q.length)}</>); })()}</p>
                 </div>
               </div>
             )}
