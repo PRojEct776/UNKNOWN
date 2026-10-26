@@ -1903,6 +1903,18 @@ async def post_smart_query(
                 clarification_options=routing["clarification_options"],
                 result={"error": "Select a document for this feature; none was matched."},
             )
+        if detected in ("mindmap", "dna", "summary", "overview") and len(routing["matched_documents"]) > 1:
+            return SmartQueryResponse(
+                original_query=routing["original_query"],
+                rewritten_query=routing["rewritten_query"],
+                matched_documents=routing["matched_documents"],
+                detected_feature=detected,
+                executed_feature=None,
+                run_all=routing["run_all"],
+                is_ambiguous=True,
+                clarification_options=[f"{detected} for {d}" for d in routing["matched_documents"]],
+                result={"error": "Multiple documents matched; choose one. Nothing was executed."},
+            )
         target_doc = routing["matched_documents"][0] if routing["matched_documents"] else ""
         if detected == "mindmap":
             executed_result = extract_concept_graph(target_doc, _llm_fn, rag_service.retriever) if target_doc else {}
@@ -1921,14 +1933,14 @@ async def post_smart_query(
                 except Exception as exc:
                     executed_result = {"error": str(exc)}
         else:
-            executed_result = {"status": "executed", "feature": detected, "target_documents": routing["matched_documents"]}
+            executed_result = {"status": "not_executed", "feature": detected, "detail": "This feature is not run by /smart-query.", "target_documents": routing["matched_documents"]}
 
     return SmartQueryResponse(
         original_query=routing["original_query"],
         rewritten_query=routing["rewritten_query"],
         matched_documents=routing["matched_documents"],
         detected_feature=detected,
-        executed_feature=detected,
+        executed_feature=(None if isinstance(executed_result, dict) and executed_result.get("status") == "not_executed" else detected),
         run_all=routing["run_all"],
         is_ambiguous=routing["is_ambiguous"],
         clarification_options=routing["clarification_options"],
