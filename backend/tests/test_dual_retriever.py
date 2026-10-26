@@ -89,7 +89,13 @@ class TestContradictionWithWikipediaFixture:
         dr = DualRetriever(retriever=mock_retriever)
 
         # Patch _fetch_web_chunks to return the Wikipedia fixture chunk
-        with patch("app.rag.dual_retriever._fetch_web_chunks", return_value=[wikipedia_fixture_chunk]):
+        with patch(
+            "app.rag.dual_retriever._fetch_web_chunks",
+            return_value=(
+                [wikipedia_fixture_chunk],
+                [{"connector": "wikipedia", "outcome": "ok", "count": 1, "detail": ""}],
+            ),
+        ):
             result = dr.dual_retrieve(
                 query="How do transformers process sequence data?",
             )
@@ -130,7 +136,13 @@ class TestContradictionWithWikipediaFixture:
         mock_retriever = MockRetriever(doc_chunks=[doc_passage])
         dr = DualRetriever(retriever=mock_retriever)
 
-        with patch("app.rag.dual_retriever._fetch_web_chunks", return_value=[wikipedia_fixture_chunk]):
+        with patch(
+            "app.rag.dual_retriever._fetch_web_chunks",
+            return_value=(
+                [wikipedia_fixture_chunk],
+                [{"connector": "wikipedia", "outcome": "ok", "count": 1, "detail": ""}],
+            ),
+        ):
             result = dr.dual_retrieve(query="What is a transformer architecture?")
 
         assert len(result.comparison) >= 1
@@ -280,7 +292,7 @@ class TestLiveFetchTimestamp:
 
         from app.rag.dual_retriever import _fetch_web_chunks
         with patch("app.rag.dual_retriever._load_connectors", return_value=[FakeConnector]):
-            chunks = _fetch_web_chunks("query", n_per=1)
+            chunks, _statuses = _fetch_web_chunks("query", n_per=1)
 
         after = datetime.now(timezone.utc)
 

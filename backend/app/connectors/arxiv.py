@@ -165,6 +165,8 @@ def search(query: str, n: int = 5) -> list[Chunk]:
 
         root = ET.fromstring(resp.text)
     except Exception as exc:
+        from app.connectors._base import note_connector_failure
+        note_connector_failure(type(exc).__name__)
         logger.warning("arXiv search failed for %r: %s", query, exc)
         return []
 

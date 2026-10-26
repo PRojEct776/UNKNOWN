@@ -124,6 +124,25 @@ def http_get_with_retry(
 
 
 # ---------------------------------------------------------------------------
+# Per-thread failure signal (lets callers tell "failed" from "no results")
+# ---------------------------------------------------------------------------
+
+_failure_tls = threading.local()
+
+
+def note_connector_failure(kind: str) -> None:
+    """Record that the current thread's connector search failed."""
+    _failure_tls.kind = kind or "error"
+
+
+def take_connector_failure() -> str | None:
+    """Return and clear the failure recorded in the current thread, if any."""
+    kind = getattr(_failure_tls, "kind", None)
+    _failure_tls.kind = None
+    return kind
+
+
+# ---------------------------------------------------------------------------
 # On-disk cache (24-hour TTL)
 # ---------------------------------------------------------------------------
 

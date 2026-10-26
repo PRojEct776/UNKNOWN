@@ -329,27 +329,53 @@ def _load_connectors(names: list[str] | None = None) -> list[Any]:
     return loaded
 
 
+_CONNECTOR_LABELS = {
+    "wikipedia": "Wikipedia",
+    "openalex": "OpenAlex",
+    "arxiv": "arXiv",
+    "crossref": "Crossref",
+}
+
+
+def _connector_key(connector_mod: Any) -> str:
+    """Short connector name, e.g. arxiv for app.connectors.arxiv."""
+    return str(getattr(connector_mod, "__name__", connector_mod)).rsplit(".", 1)[-1]
+
+
 def _fetch_web_chunks(
     query: str,
     n_per: int = DUAL_WEB_PER_CONNECTOR,
     connector_names: list[str] | None = None,
     timeout_s: float = DUAL_WEB_TIMEOUT_S,
-) -> list[dict]:
+) -> tuple[list[dict], list[dict]]:
     """
     Fan out across connectors in parallel threads.  Results are stamped with
     retrieved_at = NOW (live fetch in this request).
 
-    Returns list of plain dicts compatible with the Chunk.to_dict() schema.
+    Returns (chunks, statuses).  chunks are plain dicts compatible with the
+    Chunk.to_dict() schema.  statuses has one entry per requested connector:
+    {"connector", "outcome", "count", "detail"} where outcome is one of
+    ok, no_results, error, timeout, not_loaded.
     """
+    requested = list(connector_names or ["wikipedia", "openalex", "arxiv", "crossref"])
     connectors = _load_connectors(connector_names)
+    loaded_keys = {_connector_key(m) for m in connectors}
+    statuses: list[dict] = [
+        {"connector": name, "outcome": "not_loaded", "count": 0, "detail": ""}
+        for name in requested
+        if name not in loaded_keys
+    ]
     if not connectors:
         logger.warning("No web connectors available; web_section will be empty.")
-        return []
+        return [], statuses
 
     fetched_now = datetime.now(timezone.utc).isoformat()
     all_chunks: list[dict] = []
 
-    def _fetch_one(connector_mod: Any) -> list[dict]:
+    def _fetch_one(connector_mod: Any) -> tuple[list[dict], str | None]:
+        from app.connectors._base import take_connector_failure
+
+        take_connector_failure()  # clear any stale flag left on this pooled thread
         try:
             chunks = connector_mod.search(query, n_per)
             result = []
@@ -358,23 +384,58 @@ def _fetch_web_chunks(
                 d["retrieved_at"] = fetched_now   # overwrite with live timestamp
                 d["origin"] = d.get("origin", "web")
                 result.append(d)
-            return result
+            return result, take_connector_failure()
         except Exception as exc:
             logger.warning(
                 "Connector %r.search() failed (skipped): %s",
                 getattr(connector_mod, "__name__", connector_mod),
                 exc,
             )
-            return []
+            take_connector_failure()
+            return [], type(exc).__name__
 
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(connectors))
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(connectors)) as pool:
-            futures = {pool.submit(_fetch_one, m): m for m in connectors}
-            done, _ = concurrent.futures.wait(futures, timeout=timeout_s)
-            for fut in done:
-                all_chunks.extend(fut.result())
+        futures = {pool.submit(_fetch_one, m): m for m in connectors}
+        done, _still_running = concurrent.futures.wait(futures, timeout=timeout_s)
+        for fut, mod in futures.items():
+            key = _connector_key(mod)
+            if fut not in done:
+                statuses.append({
+                    "connector": key,
+                    "outcome": "timeout",
+                    "count": 0,
+                    "detail": "no response within %gs" % timeout_s,
+                })
+                continue
+            try:
+                chunks, failure = fut.result()
+            except Exception as exc:
+                chunks, failure = [], type(exc).__name__
+            all_chunks.extend(chunks)
+            if failure:
+                outcome = "error"
+            elif chunks:
+                outcome = "ok"
+            else:
+                outcome = "no_results"
+            statuses.append({
+                "connector": key,
+                "outcome": outcome,
+                "count": len(chunks),
+                "detail": failure or "",
+            })
     except Exception as exc:
         logger.warning("Web connector fan-out failed: %s", exc)
+    finally:
+        # Never block the request on connectors that are still running.
+        pool.shutdown(wait=False, cancel_futures=True)
+
+    reported = {s["connector"] for s in statuses}
+    for mod in connectors:
+        key = _connector_key(mod)
+        if key not in reported:
+            statuses.append({"connector": key, "outcome": "error", "count": 0, "detail": "fan-out failed"})
 
     # Deduplicate by URL, then by title similarity (reuse connector _base logic)
     try:
@@ -385,7 +446,40 @@ def _fetch_web_chunks(
     except Exception as exc:
         logger.debug("Web chunk deduplication skipped: %s", exc)
 
-    return all_chunks
+    return all_chunks, statuses
+
+
+def _web_gaps_from_statuses(statuses: list[dict]) -> list[str]:
+    """Turn connector statuses into human-readable gap strings for /answer."""
+    if not statuses:
+        return ["Web retrieval was requested but no scholarly web source could be used."]
+
+    def label(s: dict) -> str:
+        return _CONNECTOR_LABELS.get(s["connector"], s["connector"])
+
+    gaps: list[str] = []
+    failed = [s for s in statuses if s["outcome"] in ("error", "timeout", "not_loaded")]
+    reachable = [s for s in statuses if s["outcome"] in ("ok", "no_results")]
+
+    for s in failed:
+        if s["outcome"] == "timeout":
+            reason = "timed out"
+        elif s["outcome"] == "not_loaded":
+            reason = "could not be loaded"
+        elif s.get("detail"):
+            reason = "failed (%s)" % s["detail"]
+        else:
+            reason = "failed"
+        gaps.append("Web source unavailable: %s %s." % (label(s), reason))
+
+    if not reachable:
+        gaps.insert(0, "No scholarly web evidence was retrieved: every web source failed or timed out.")
+    elif sum(s["count"] for s in statuses) == 0:
+        gaps.append(
+            "No scholarly web results found (checked: %s)."
+            % ", ".join(label(s) for s in reachable)
+        )
+    return gaps
 
 
 # ---------------------------------------------------------------------------
@@ -622,12 +716,14 @@ class DualRetriever:
 
         # 2. Web retrieval (unless doc_only)
         web_chunks: list[dict] = []
+        web_gaps: list[str] = []
         if not doc_only:
-            web_chunks = _fetch_web_chunks(
+            web_chunks, web_statuses = _fetch_web_chunks(
                 query,
                 n_per=web_n_per,
                 connector_names=self._connector_names,
             )
+            web_gaps = _web_gaps_from_statuses(web_statuses)
             logger.info(
                 "DualRetriever: %d web chunks retrieved for %r", len(web_chunks), query[:60]
             )
@@ -665,6 +761,7 @@ class DualRetriever:
             detail=detail,
             doc_sources=doc_chunks,
             web_sources=web_chunks,
+            gaps=web_gaps,
         )
 
     # ------------------------------------------------------------------

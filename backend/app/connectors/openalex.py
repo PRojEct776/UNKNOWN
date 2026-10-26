@@ -132,6 +132,8 @@ def search(query: str, n: int = 5) -> list[Chunk]:
         resp = http_get_with_retry(_WORKS_URL, params=params)
         data = resp.json()
     except Exception as exc:
+        from app.connectors._base import note_connector_failure
+        note_connector_failure(type(exc).__name__)
         logger.warning("OpenAlex search failed for %r: %s", query, exc)
         return []
 
