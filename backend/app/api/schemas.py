@@ -702,7 +702,7 @@ class DocumentOverviewResponse(BaseModel):
 
 class ConceptSource(BaseModel):
     document: str = ""
-    page: int | str = 1
+    page: int | str | None = None  # None = page unknown (never guessed)
     chunk_id: str = ""
     passage: str = ""
 
@@ -711,16 +711,37 @@ class ConceptGraphNode(BaseModel):
     id: str
     label: str
     cluster: str = "General"
-    relevance: float = 0.8
-    importance: float = 0.7
+    # Kept for API compatibility. No measured score exists, so these are
+    # always None; the UI must not display or invent a value.
+    relevance: float | None = None
+    importance: float | None = None
+    # Measured: number of document chunks whose text contains the label.
+    mention_count: int = 0
+    # "llm" = proposed by the model; "heuristic" = frequency-based fallback.
+    origin: str = "unknown"
     sources: list[ConceptSource] = Field(default_factory=list)
 
 
 class ConceptGraphEdge(BaseModel):
     source: str
     target: str
+    # Relation type is the extractor's proposal, not a verified fact.
     relation: str = "RELATES_TO"
+    # "co_occurrence": both concepts appear in the same passage (lexical only).
+    # "relation_term_present": co-occurrence plus the relation word appears there.
+    # "unverified": no evidence status was recorded.
+    evidence_status: str = "unverified"
+    origin: str = "unknown"
     sources: list[ConceptSource] = Field(default_factory=list)
+
+
+class ConceptGraphExtraction(BaseModel):
+    # "llm" or "heuristic_fallback"
+    method: str = "llm"
+    chunks_analyzed: int = 0
+    chunks_total: int = 0
+    dropped_nodes: int = 0
+    dropped_edges: int = 0
 
 
 class ConceptGraphResponse(BaseModel):
@@ -729,6 +750,10 @@ class ConceptGraphResponse(BaseModel):
     edges: list[ConceptGraphEdge] = Field(default_factory=list)
     total_nodes: int = 0
     total_edges: int = 0
+    # "ok" or "empty"; when empty, empty_reason says why.
+    status: str = "ok"
+    empty_reason: str | None = None
+    extraction: ConceptGraphExtraction = Field(default_factory=ConceptGraphExtraction)
     from_cache: bool = False
 
 

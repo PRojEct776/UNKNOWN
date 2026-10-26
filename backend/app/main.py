@@ -1724,14 +1724,28 @@ def clear_history(
 
 @app.get("/documents/{document_name}/concept-graph", response_model=ConceptGraphResponse)
 @app.get("/concept-graph/{document_name}", response_model=ConceptGraphResponse, include_in_schema=False)
-def get_concept_graph(document_name: str):
+def get_concept_graph(
+    document_name: str,
+    request: Request,
+    authorization: str | None = Header(None),
+    x_session_token: str | None = Header(None),
+    x_user_id: str | None = Header(None),
+):
     """
     Return concept graph (nodes, edges) extracted from chunks.
     Drops any unsupported nodes or edges. Caches per document.
     """
+    from app.rag.document_eligibility import get_user_authorized_documents
     from app.services.smart_router_service import extract_concept_graph
 
     safe_name = Path(document_name).name
+    active_user, _ = resolve_authenticated_workspace(
+        request, authorization, x_session_token, x_user_id=x_user_id
+    )
+    authorized_docs = get_user_authorized_documents(active_user, include_test_docs=True)
+    if safe_name not in authorized_docs:
+        raise HTTPException(status_code=404, detail=f"Document '{safe_name}' not found")
+
     def _llm_fn(prompt: str, temperature: float = 0.0) -> str:
         resp = rag_service.llm.generate_grounded(prompt) if temperature == 0.0 else rag_service.llm.generate(prompt)
         if not resp.success:

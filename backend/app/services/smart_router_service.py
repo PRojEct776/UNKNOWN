@@ -78,34 +78,83 @@ def get_document_chunks(document_name: str) -> list[dict[str, Any]]:
 # 2. Concept Graph with Strict Grounding Verification
 # ===========================================================================
 
+import hashlib
+
+CONCEPT_GRAPH_SCHEMA_VERSION = 2
+_GRAPH_PROMPT_CHUNKS = 12
+_GRAPH_PROMPT_CHARS = 400
+_MAX_SOURCES_PER_ITEM = 5
+_SNIPPET_CHARS = 350
+
+
+def _norm_text(value: Any) -> str:
+    """Lowercase, turn punctuation/underscores into spaces, collapse whitespace."""
+    cleaned = re.sub(r"[^\w\s]", " ", str(value).lower().replace("_", " "))
+    return " ".join(cleaned.split())
+
+
+def _contains_phrase(norm_text: str, norm_phrase: str) -> bool:
+    """Whole-word phrase match on already-normalised text."""
+    return bool(norm_phrase) and f" {norm_phrase} " in f" {norm_text} "
+
+
+def _chunk_page(chunk: dict[str, Any]) -> int | str | None:
+    page = chunk.get("page")
+    if page is None or page == "":
+        return None  # unknown page is reported as unknown, never guessed
+    return page
+
+
+def _snippet(text: Any, phrases: list[str]) -> str:
+    """Passage window starting near the earliest matched phrase."""
+    text = str(text or "")
+    starts = []
+    for phrase in phrases:
+        tokens = phrase.split()
+        if not tokens:
+            continue
+        pattern = r"[\W_]+".join(re.escape(t) for t in tokens)
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            starts.append(m.start())
+    if starts:
+        start = max(0, min(starts) - _SNIPPET_CHARS // 4)
+        return text[start:start + _SNIPPET_CHARS]
+    return text[:_SNIPPET_CHARS]
+
+
+def _make_source(chunk: dict[str, Any], phrases: list[str]) -> dict[str, Any]:
+    return {
+        "document": str(chunk.get("document", "")),
+        "page": _chunk_page(chunk),
+        "chunk_id": str(chunk.get("chunk_id", "")),
+        "passage": _snippet(chunk.get("text", ""), phrases),
+    }
+
+
+def _chunks_fingerprint(chunks: list[dict[str, Any]]) -> str:
+    h = hashlib.sha256()
+    for c in chunks:
+        h.update(str(c.get("chunk_id", "")).encode("utf-8", "replace"))
+        h.update(b"\x00")
+        h.update(str(c.get("text", "")).encode("utf-8", "replace"))
+        h.update(b"\x01")
+    return h.hexdigest()
+
+
 def _verify_concept_in_chunks(concept_label: str, chunks: list[dict[str, Any]]) -> tuple[bool, list[dict[str, Any]]]:
     """
-    Check if a concept is lexically present or grounded in at least one chunk.
-    Returns (is_supported, sources).
+    A concept is supported only if its label appears as a whole-word phrase in
+    at least one chunk. Returns (is_supported, sources for every matching chunk).
     """
-    label_norm = concept_label.strip().lower()
-    if len(label_norm) < 2:
+    phrase = _norm_text(concept_label)
+    if len(phrase) < 2:
         return False, []
-
-    # Strip punctuation for matching
-    cleaned_label = re.sub(r"[^\w\s]", "", label_norm)
-    if not cleaned_label:
-        return False, []
-
-    pattern = re.compile(rf"\b{re.escape(cleaned_label)}\b", re.IGNORECASE)
-    sources = []
-
-    for c in chunks:
-        text = c.get("text", "")
-        text_clean = re.sub(r"[^\w\s]", " ", text)
-        if pattern.search(text_clean) or cleaned_label in text.lower():
-            sources.append({
-                "document": c.get("document", ""),
-                "page": c.get("page", 1),
-                "chunk_id": c.get("chunk_id", ""),
-                "passage": c.get("text", "")[:350],
-            })
-
+    sources = [
+        _make_source(c, [phrase])
+        for c in chunks
+        if _contains_phrase(_norm_text(c.get("text", "")), phrase)
+    ]
     return (len(sources) > 0, sources)
 
 
@@ -114,31 +163,80 @@ def _verify_relation_in_chunks(
     target_label: str,
     relation: str,
     chunks: list[dict[str, Any]],
-) -> tuple[bool, list[dict[str, Any]]]:
+) -> tuple[bool, str, list[dict[str, Any]]]:
     """
-    Verify if a relationship between source and target is supported by chunks.
+    An edge is supported only if BOTH concepts appear in the same chunk.
+    This is lexical co-occurrence, not proof that the stated relation holds.
+    Status is "relation_term_present" if the relation word also appears in a
+    supporting chunk, otherwise "co_occurrence". Returns (supported, status, sources).
     """
-    src_norm = re.sub(r"[^\w\s]", "", source_label.strip().lower())
-    tgt_norm = re.sub(r"[^\w\s]", "", target_label.strip().lower())
-    rel_norm = re.sub(r"[^\w\s]", "", relation.strip().lower())
+    src = _norm_text(source_label)
+    tgt = _norm_text(target_label)
+    rel = _norm_text(relation)
+    if not src or not tgt or src == tgt:
+        return False, "unverified", []
 
-    sources = []
+    with_rel: list[dict[str, Any]] = []
+    without_rel: list[dict[str, Any]] = []
     for c in chunks:
-        text_lower = c.get("text", "").lower()
-        has_src = src_norm in text_lower
-        has_tgt = tgt_norm in text_lower
-        has_rel = rel_norm in text_lower if len(rel_norm) > 2 else False
+        norm = _norm_text(c.get("text", ""))
+        if _contains_phrase(norm, src) and _contains_phrase(norm, tgt):
+            if len(rel) > 2 and _contains_phrase(norm, rel):
+                with_rel.append(_make_source(c, [src, tgt]))
+            else:
+                without_rel.append(_make_source(c, [src, tgt]))
 
-        # Relationship supported if both concepts appear together, or concept + relation appears
-        if (has_src and has_tgt) or (has_rel and (has_src or has_tgt)):
-            sources.append({
-                "document": c.get("document", ""),
-                "page": c.get("page", 1),
-                "chunk_id": c.get("chunk_id", ""),
-                "passage": c.get("text", "")[:350],
-            })
+    sources = with_rel + without_rel
+    if not sources:
+        return False, "unverified", []
+    return True, ("relation_term_present" if with_rel else "co_occurrence"), sources
 
-    return (len(sources) > 0, sources)
+
+def _empty_graph(
+    document: str,
+    reason: str,
+    *,
+    method: str = "none",
+    chunks_total: int = 0,
+    chunks_analyzed: int = 0,
+    dropped_nodes: int = 0,
+    dropped_edges: int = 0,
+) -> dict[str, Any]:
+    return {
+        "document": document,
+        "nodes": [],
+        "edges": [],
+        "total_nodes": 0,
+        "total_edges": 0,
+        "status": "empty",
+        "empty_reason": reason,
+        "extraction": {
+            "method": method,
+            "chunks_analyzed": chunks_analyzed,
+            "chunks_total": chunks_total,
+            "dropped_nodes": dropped_nodes,
+            "dropped_edges": dropped_edges,
+        },
+        "from_cache": False,
+        "schema_version": CONCEPT_GRAPH_SCHEMA_VERSION,
+    }
+
+
+def _heuristic_nodes(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Frequency-based fallback: frequent capitalised terms. No scores, no edges."""
+    all_text = " ".join(c.get("text", "") for c in chunks)
+    candidates = re.findall(r"\b[A-Z][a-zA-Z0-9_-]{2,}(?:\s+[A-Z][a-zA-Z0-9_-]+)?\b", all_text)
+    stop = {"this", "that", "with", "from", "these", "figure", "table"}
+    counts: dict[str, int] = {}
+    for cand in candidates:
+        cand = " ".join(cand.split())
+        if len(cand) > 3 and cand.lower() not in stop:
+            counts[cand] = counts.get(cand, 0) + 1
+    top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:8]
+    return [
+        {"id": f"node_{idx + 1}", "label": label, "cluster": "General"}
+        for idx, (label, _) in enumerate(top)
+    ]
 
 
 def extract_concept_graph(
@@ -147,39 +245,54 @@ def extract_concept_graph(
     retriever: Any,
 ) -> dict[str, Any]:
     """
-    Extract grounded concept graph for a document.
-    Drops any node or edge not supported by actual document chunks.
-    Caches result per document.
+    Extract a concept graph for one document, keeping only evidence-backed items.
+
+    - Nodes: kept only if the label appears (whole-word) in the document's chunks.
+    - Edges: kept only if both endpoint nodes exist, differ, and both concepts
+      appear in the same chunk. evidence_status says how strong the evidence is.
+    - No relevance/importance scores are produced (none can be measured).
+    - If the LLM fails, a heuristic node list is used, labelled
+      extraction.method = "heuristic_fallback", with no edges, and not cached.
+    - Cache entries carry a schema version and a content hash of the chunks.
     """
     safe_name = Path(document_name).name
     stem = Path(safe_name).stem
 
-    # Check cache
+    chunks = get_document_chunks(safe_name)
+    if not chunks:
+        return _empty_graph(safe_name, "no_indexed_content")
+
+    fingerprint = _chunks_fingerprint(chunks)
+    chunks_analyzed = min(_GRAPH_PROMPT_CHUNKS, len(chunks))
+
     cache_file = CONCEPT_GRAPH_CACHE_DIR / f"{stem}_graph.json"
     if cache_file.exists():
         try:
             with open(cache_file, "r", encoding="utf-8") as f:
                 cached = json.load(f)
-            cached["from_cache"] = True
-            return cached
+            if (
+                isinstance(cached, dict)
+                and cached.get("schema_version") == CONCEPT_GRAPH_SCHEMA_VERSION
+                and cached.get("content_hash") == fingerprint
+            ):
+                cached["from_cache"] = True
+                return cached
         except Exception:
             pass
 
-    chunks = get_document_chunks(safe_name)
-    if not chunks:
-        return {"document": safe_name, "nodes": [], "edges": [], "from_cache": False}
-
     sample_text = "\n\n---\n\n".join(
-        f"[Chunk {c.get('chunk_id')}, Page {c.get('page')}]\n{c.get('text', '')[:400]}"
-        for c in chunks[:12]
+        f"[Chunk {c.get('chunk_id')}, Page {c.get('page') if c.get('page') not in (None, '') else '?'}]\n"
+        f"{str(c.get('text', ''))[:_GRAPH_PROMPT_CHARS]}"
+        for c in chunks[:_GRAPH_PROMPT_CHUNKS]
     )
 
     prompt = f"""You are the UNKNOWN Knowledge Graph Engine.
 Extract key technical concepts and their directional relationships from these document chunks.
+Use concept names exactly as they are written in the text.
 Return ONLY valid JSON with this exact schema:
 {{
   "nodes": [
-    {{"id": "node_id", "label": "Concept Name", "cluster": "Method|Theory|Architecture|Metric", "relevance": 0.95, "importance": 0.9}}
+    {{"id": "node_id", "label": "Concept Name", "cluster": "Method|Theory|Architecture|Metric"}}
   ],
   "edges": [
     {{"source": "source_node_id", "target": "target_node_id", "relation": "USES|EVALUATES|OPTIMIZES|REDUCES"}}
@@ -191,86 +304,115 @@ DOCUMENT CHUNKS:
 
 Extract 6 to 12 precise concepts found in the text. Return ONLY valid JSON."""
 
-    raw_nodes = []
-    raw_edges = []
+    method = "llm"
+    raw_nodes: list[dict[str, Any]] = []
+    raw_edges: list[dict[str, Any]] = []
     try:
         raw_resp = llm_fn(prompt, 0.0)
         cleaned = re.sub(r"^```(?:json)?\s*", "", raw_resp.strip(), flags=re.IGNORECASE)
         cleaned = re.sub(r"\s*```$", "", cleaned).strip()
         parsed = json.loads(cleaned)
-        raw_nodes = parsed.get("nodes", [])
-        raw_edges = parsed.get("edges", [])
+        if not isinstance(parsed, dict):
+            raise ValueError("LLM graph response is not a JSON object")
+        nodes_val = parsed.get("nodes")
+        edges_val = parsed.get("edges")
+        raw_nodes = [n for n in nodes_val if isinstance(n, dict)] if isinstance(nodes_val, list) else []
+        raw_edges = [e for e in edges_val if isinstance(e, dict)] if isinstance(edges_val, list) else []
     except Exception as exc:
-        logger.warning("Concept graph LLM extraction warning: %s; using deterministic fallback", exc)
-        # Fallback to frequent capitalized technical n-grams
-        all_text = " ".join(c.get("text", "") for c in chunks)
-        candidates = re.findall(r"\b[A-Z][a-zA-Z0-9_-]{2,}(?:\s+[A-Z][a-zA-Z0-9_-]+)?\b", all_text)
-        counts: dict[str, int] = {}
-        for cand in candidates:
-            if len(cand) > 3 and cand.lower() not in {"this", "that", "with", "from", "these", "figure", "table"}:
-                counts[cand] = counts.get(cand, 0) + 1
-        top_candidates = [c for c, _ in sorted(counts.items(), key=lambda x: -x[1])[:8]]
-        for idx, tc in enumerate(top_candidates):
-            raw_nodes.append({
-                "id": f"node_{idx+1}",
-                "label": tc,
-                "cluster": "Core Concept",
-                "relevance": 0.85,
-                "importance": 0.8,
-            })
-        if len(raw_nodes) >= 2:
-            raw_edges.append({
-                "source": raw_nodes[0]["id"],
-                "target": raw_nodes[1]["id"],
-                "relation": "RELATES_TO",
-            })
+        logger.warning("Concept graph LLM extraction failed: %s; using heuristic fallback", exc)
+        method = "heuristic_fallback"
+        raw_nodes = _heuristic_nodes(chunks)
+        raw_edges = []
 
-    # GROUNDING VERIFICATION:
-    # Keep a node ONLY if chunks contain the concept!
-    valid_nodes = []
-    node_id_to_label = {}
-    valid_node_ids = set()
+    origin = "llm" if method == "llm" else "heuristic"
+
+    # Nodes: keep only concepts that appear in this document's chunks.
+    valid_nodes: list[dict[str, Any]] = []
+    id_to_label: dict[str, str] = {}
+    label_to_id: dict[str, str] = {}
+    dropped_nodes = 0
 
     for n in raw_nodes:
-        label = str(n.get("label", "")).strip()
+        label = " ".join(str(n.get("label", "")).split())
         if not label:
+            dropped_nodes += 1
+            continue
+        norm_label = _norm_text(label)
+        node_id = str(n.get("id") or label)
+        if norm_label in label_to_id or node_id in id_to_label:
+            dropped_nodes += 1
+            logger.info("Dropping duplicate concept node: '%s'", label)
             continue
         is_grounded, sources = _verify_concept_in_chunks(label, chunks)
-        if is_grounded:
-            node_id = str(n.get("id", label))
-            valid_node_ids.add(node_id)
-            node_id_to_label[node_id] = label
-            valid_nodes.append({
-                "id": node_id,
-                "label": label,
-                "cluster": str(n.get("cluster", "General")),
-                "relevance": float(n.get("relevance", 0.8)),
-                "importance": float(n.get("importance", 0.7)),
-                "sources": sources[:5],
-            })
-        else:
+        if not is_grounded:
+            dropped_nodes += 1
             logger.info("Dropping unsupported concept node: '%s'", label)
+            continue
+        id_to_label[node_id] = label
+        label_to_id[norm_label] = node_id
+        valid_nodes.append({
+            "id": node_id,
+            "label": label,
+            "cluster": str(n.get("cluster") or "General"),
+            "relevance": None,
+            "importance": None,
+            "mention_count": len(sources),
+            "origin": origin,
+            "sources": sources[:_MAX_SOURCES_PER_ITEM],
+        })
 
-    # Keep an edge ONLY if both nodes exist AND relation is supported
-    valid_edges = []
+    def _resolve(ref: Any) -> str | None:
+        ref_s = str(ref or "")
+        if ref_s in id_to_label:
+            return ref_s
+        return label_to_id.get(_norm_text(ref_s))
+
+    # Edges: keep only if both nodes exist and both concepts co-occur in a chunk.
+    valid_edges: list[dict[str, Any]] = []
+    seen_edges: set[tuple[str, str, str]] = set()
+    dropped_edges = 0
+
     for e in raw_edges:
-        src = str(e.get("source", ""))
-        tgt = str(e.get("target", ""))
-        rel = str(e.get("relation", "RELATES_TO"))
+        src = _resolve(e.get("source"))
+        tgt = _resolve(e.get("target"))
+        rel = " ".join(str(e.get("relation") or "").split()) or "RELATES_TO"
+        if not src or not tgt or src == tgt:
+            dropped_edges += 1
+            continue
+        key = (src, tgt, _norm_text(rel))
+        if key in seen_edges:
+            dropped_edges += 1
+            continue
+        is_supported, status, sources = _verify_relation_in_chunks(
+            id_to_label[src], id_to_label[tgt], rel, chunks
+        )
+        if not is_supported:
+            dropped_edges += 1
+            logger.info(
+                "Dropping unsupported relation edge: %s -> %s (%s)",
+                id_to_label[src], id_to_label[tgt], rel,
+            )
+            continue
+        seen_edges.add(key)
+        valid_edges.append({
+            "source": src,
+            "target": tgt,
+            "relation": rel,
+            "evidence_status": status,
+            "origin": "llm",
+            "sources": sources[:_MAX_SOURCES_PER_ITEM],
+        })
 
-        if src in valid_node_ids and tgt in valid_node_ids and src != tgt:
-            src_lbl = node_id_to_label[src]
-            tgt_lbl = node_id_to_label[tgt]
-            is_supported, sources = _verify_relation_in_chunks(src_lbl, tgt_lbl, rel, chunks)
-            if is_supported:
-                valid_edges.append({
-                    "source": src,
-                    "target": tgt,
-                    "relation": rel,
-                    "sources": sources[:5],
-                })
-            else:
-                logger.info("Dropping unsupported relation edge: %s -> %s (%s)", src_lbl, tgt_lbl, rel)
+    if not valid_nodes:
+        return _empty_graph(
+            safe_name,
+            "no_grounded_concepts",
+            method=method,
+            chunks_total=len(chunks),
+            chunks_analyzed=chunks_analyzed,
+            dropped_nodes=dropped_nodes,
+            dropped_edges=dropped_edges,
+        )
 
     result = {
         "document": safe_name,
@@ -278,15 +420,27 @@ Extract 6 to 12 precise concepts found in the text. Return ONLY valid JSON."""
         "edges": valid_edges,
         "total_nodes": len(valid_nodes),
         "total_edges": len(valid_edges),
+        "status": "ok",
+        "empty_reason": None,
+        "extraction": {
+            "method": method,
+            "chunks_analyzed": chunks_analyzed,
+            "chunks_total": len(chunks),
+            "dropped_nodes": dropped_nodes,
+            "dropped_edges": dropped_edges,
+        },
         "from_cache": False,
+        "schema_version": CONCEPT_GRAPH_SCHEMA_VERSION,
+        "content_hash": fingerprint,
     }
 
-    # Cache graph
-    try:
-        with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-    except Exception as exc:
-        logger.warning("Failed to cache concept graph: %s", exc)
+    # Only cache real LLM-based results; a fallback should be retried next time.
+    if method == "llm":
+        try:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            logger.warning("Failed to cache concept graph: %s", exc)
 
     return result
 

@@ -402,7 +402,11 @@ def test_concept_graph_endpoint_and_passage_support(client, tmp_path):
             with patch("app.main.rag_service.llm.generate_grounded") as mock_gen:
                 mock_gen.return_value = MagicMock(success=True, answer=llm_graph_json, error="")
 
-                response = client.get("/documents/transformers.pdf/concept-graph")
+                with patch(
+                    "app.rag.document_eligibility.get_user_authorized_documents",
+                    return_value={"transformers.pdf"},
+                ):
+                    response = client.get("/documents/transformers.pdf/concept-graph")
                 assert response.status_code == 200
                 data = response.json()
 
@@ -418,3 +422,7 @@ def test_concept_graph_endpoint_and_passage_support(client, tmp_path):
                 source = transformer_node["sources"][0]
                 assert source["page"] == 2
                 assert "scaled dot-product attention" in source["passage"]
+
+                # No measured score exists, so none may be invented
+                assert transformer_node["relevance"] is None
+                assert transformer_node["importance"] is None
