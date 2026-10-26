@@ -31,8 +31,9 @@ export interface MindMapDisplayNode {
   id: string;
   label: string;
   cluster: string;
-  relevance: number;
-  importance: number;
+  // Measured: chunks containing the label. null when not measured.
+  mentionCount: number | null;
+  origin?: string;
   sources: BackendConceptSource[];
   children?: MindMapDisplayNode[];
   isExpanded?: boolean;
@@ -67,15 +68,14 @@ function convertToDisplayTree(
         id: `cluster-${cluster.replace(/\s+/g, '-').toLowerCase()}`,
         label: cluster,
         cluster: cluster,
-        relevance: 1.0,
-        importance: 0.9,
+        mentionCount: null,
         sources: [],
         children: nodes.map((n) => ({
           id: n.id,
           label: n.label,
           cluster: n.cluster,
-          relevance: n.relevance ?? 0.8,
-          importance: n.importance ?? 0.7,
+          mentionCount: typeof n.mention_count === 'number' ? n.mention_count : null,
+          origin: n.origin,
           sources: n.sources || [],
           children: [],
         })),
@@ -86,8 +86,7 @@ function convertToDisplayTree(
       id: 'root-concept-graph',
       label: graph.document || 'Document Knowledge Graph',
       cluster: 'Root',
-      relevance: 1.0,
-      importance: 1.0,
+      mentionCount: null,
       sources: [],
       children: clusterChildren,
     };
@@ -99,14 +98,13 @@ function convertToDisplayTree(
         id: node.id || `node-${Math.random().toString(36).substring(7)}`,
         label: node.label,
         cluster: 'Concepts',
-        relevance: 0.85,
-        importance: 0.8,
+        mentionCount: null,
         sources: node.description
           ? [
               {
-                document: 'Active Document',
-                page: 1,
-                chunk_id: node.id,
+                document: 'Mind map description (no source page)',
+                page: null,
+                chunk_id: '',
                 passage: node.description,
               },
             ]
@@ -320,11 +318,11 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
       function renderMdNode(node: MindMapDisplayNode, depth: number) {
         const indent = '  '.repeat(depth);
         const prefix = depth === 0 ? '# ' : depth === 1 ? '## ' : '- ';
-        md += `${indent}${prefix}**${node.label}** *(Cluster: ${node.cluster}, Relevance: ${(node.relevance * 100).toFixed(0)}%)*\n`;
+        md += `${indent}${prefix}**${node.label}** *(Cluster: ${node.cluster}${node.mentionCount !== null ? `, mentioned in ${node.mentionCount} chunk(s)` : ''})*\n`;
 
         if (node.sources && node.sources.length > 0) {
           node.sources.forEach((s) => {
-            md += `${indent}  > *Source: ${s.document} (Page ${s.page})*\n`;
+            md += `${indent}  > *Source: ${s.document} (${s.page !== null && s.page !== undefined && s.page !== '' ? `Page ${s.page}` : 'Page unknown'})*\n`;
             if (s.passage) {
               md += `${indent}  > "${s.passage.trim()}"\n`;
             }
@@ -698,7 +696,7 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
                     fill="none"
                     stroke="url(#link-gradient)"
                     strokeWidth="1.75"
-                    strokeDasharray={target.node.relevance < 0.7 ? '3 3' : 'none'}
+                    strokeDasharray={target.node.origin === 'heuristic' ? '3 3' : 'none'}
                     className="opacity-70 hover:opacity-100 transition-opacity"
                   />
                 );
@@ -835,37 +833,20 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
                 </h3>
               </div>
 
-              {/* Relevance & Importance Metrics */}
-              <div className="space-y-2 text-xs">
-                <div>
-                  <div className="flex justify-between text-[11px] text-[#98a6b0] mb-1">
-                    <span>Relevance</span>
-                    <span className="font-mono text-[#a7d0d2]">
-                      {Math.round(selectedNode.relevance * 100)}%
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full bg-[#141d26] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#a7d0d2] rounded-full"
-                      style={{ width: `${selectedNode.relevance * 100}%` }}
-                    />
-                  </div>
+              {/* Measured facts only */}
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between text-[11px] text-[#98a6b0]">
+                  <span>Mentioned in</span>
+                  <span className="font-mono text-[#a7d0d2]">
+                    {selectedNode.mentionCount !== null ? `${selectedNode.mentionCount} chunk(s)` : 'not measured'}
+                  </span>
                 </div>
-
-                <div>
-                  <div className="flex justify-between text-[11px] text-[#98a6b0] mb-1">
-                    <span>Structural Importance</span>
-                    <span className="font-mono text-[#f59e0b]">
-                      {Math.round(selectedNode.importance * 100)}%
-                    </span>
+                {selectedNode.origin && (
+                  <div className="flex justify-between text-[11px] text-[#98a6b0]">
+                    <span>Origin</span>
+                    <span className="font-mono text-[#a7d0d2]">{selectedNode.origin}</span>
                   </div>
-                  <div className="h-1.5 w-full bg-[#141d26] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#f59e0b] rounded-full"
-                      style={{ width: `${selectedNode.importance * 100}%` }}
-                    />
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Grounded Sources & Passages */}
@@ -888,7 +869,9 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
                       >
                         <div className="flex items-center justify-between text-[10px] font-mono text-[#a7d0d2]">
                           <span className="truncate max-w-[130px]">{src.document || 'Document'}</span>
-                          <span className="text-[#98a6b0]">Page {src.page}</span>
+                          <span className="text-[#98a6b0]">
+                            {src.page !== null && src.page !== undefined && src.page !== '' ? `Page ${src.page}` : 'Page unknown'}
+                          </span>
                         </div>
                         {src.passage ? (
                           <blockquote
