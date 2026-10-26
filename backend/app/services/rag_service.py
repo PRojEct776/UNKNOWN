@@ -650,12 +650,34 @@ class RAGService:
         sources = build_sources(results)
         logger.info("Grounded pipeline completed with %d verified sentences, %d claims.", len(verified_sentences), len(claims))
 
+        conflicts_out: list[dict] = []
+        reliability_out: list[dict] = []
+        try:
+            from app.rag.reliability import compute_reliability, detect_conflicts
+
+            for _s in results:
+                _get = _s.get if isinstance(_s, dict) else (lambda k, d=None, _o=_s: getattr(_o, k, d))
+                reliability_out.append({
+                    "source": str(_get("document") or _get("chunk_id") or _get("id") or ""),
+                    "reliability": round(float(compute_reliability(_s)), 4),
+                })
+            _claim_dicts = [
+                {"text": c.text, "source_ids": list(c.source_ids or [])}
+                for c in claims[:8]
+            ]
+            for _cf in detect_conflicts(_claim_dicts):
+                conflicts_out.append(_cf.model_dump() if hasattr(_cf, "model_dump") else dict(_cf))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Reliability/conflict analysis failed (%s); continuing without it.", exc)
+
         return QueryResponse(
             query=normalized_query,
             query_type=query_type.value,
             answer=answer,
             sources=sources,
             claims=claims,
+            conflicts=conflicts_out,
+            source_reliability=reliability_out,
         )
 
     # ======================================================

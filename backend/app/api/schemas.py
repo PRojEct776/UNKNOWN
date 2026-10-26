@@ -172,6 +172,8 @@ class QueryResponse(BaseModel):
     sources: list[Source]
     claims: list[Claim] = Field(default_factory=list)
     confidence: Confidence | None = None
+    conflicts: list[dict] = Field(default_factory=list)
+    source_reliability: list[dict] = Field(default_factory=list)
 
 
 class ClaimVerificationRequest(BaseModel):
