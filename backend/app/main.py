@@ -1452,10 +1452,16 @@ def answer(request: AnswerRequest):
 
     start_time = time.perf_counter()
     try:
+        from app.rag.source_mode import resolve_source_mode
+        doc_only_eff, names_eff = resolve_source_mode(
+            getattr(request, "source_mode", None),
+            request.doc_only,
+            request.document_names,
+        )
         result = rag_service.answer(
             query=request.query,
-            document_names=request.document_names,
-            doc_only=request.doc_only,
+            document_names=names_eff,
+            doc_only=doc_only_eff,
             scope=getattr(request, "scope", None),
         )
         return result

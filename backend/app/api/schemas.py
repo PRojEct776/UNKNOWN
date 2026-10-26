@@ -82,6 +82,12 @@ class AnswerRequest(BaseModel):
         default=False,
         description="If True, skip all web connector calls (document-only scope).",
     )
+    source_mode: str | None = Field(
+        default=None,
+        pattern="^(documents|web|both)$",
+        description="Explicit source choice: documents, web or both. "
+                    "When omitted, doc_only and document_names behave as before.",
+    )
     scope: str | None = Field(
         default=None,
         description="Scope restriction, e.g. 'document only'.",
