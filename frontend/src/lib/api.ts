@@ -540,6 +540,7 @@ export async function queryBackend(
         query,
         document_names: documentNames ?? null,
         doc_only: docOnly,
+        source_mode: docOnly ? 'documents' : 'both',
         scope: scope ?? null,
       }),
     },
