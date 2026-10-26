@@ -496,6 +496,41 @@ class RAGService:
 
         logger.info(f"Retrieved {len(results)} chunks.")
 
+        # Evidence sufficiency gate: abstain before generation when the
+        # retrieved passages do not cover the question.
+        import os as _os
+
+        from app.rag.evidence_sufficiency import assess_sufficiency
+
+        _gate_texts = [
+            (r.get("text") or r.get("chunk_text") or r.get("content") or "")
+            if isinstance(r, dict)
+            else str(getattr(r, "text", "") or "")
+            for r in results
+        ]
+        if any(t.strip() for t in _gate_texts):
+            _gate = assess_sufficiency(
+                normalized_query,
+                _gate_texts,
+                min_coverage=float(_os.environ.get("SUFFICIENCY_MIN_COVERAGE", "0.3")),
+            )
+            logger.info(
+                "Sufficiency gate: sufficient=%s coverage=%.2f uncovered=%s",
+                _gate.sufficient,
+                _gate.coverage,
+                _gate.uncovered_terms,
+            )
+            if not _gate.sufficient:
+                return QueryResponse(
+                    query=normalized_query,
+                    query_type=query_type.value,
+                    answer="The retrieved context does not contain enough information.",
+                    sources=[],
+                )
+        elif results:
+            logger.warning("Sufficiency gate skipped: no text field found in results.")
+
+
         # ==================================================
 
         # 3. EVIDENCE TRAIL
