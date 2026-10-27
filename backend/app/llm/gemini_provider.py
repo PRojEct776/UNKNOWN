@@ -115,6 +115,50 @@ class GeminiProvider(BaseProvider):
                 candidates.append(fallback)
         return candidates
 
+    def _run_chain(self, prompt: str, config: Any) -> str:
+        """One attempt per model; quota errors stop the chain; bounded total time."""
+        from app.llm.llm_fallback import bounded_model_chain
+
+        budget = float(getattr(settings, "GEMINI_CHAIN_BUDGET_S", 10.0))
+        state: dict = {"exc": None, "fatal": False}
+
+        def attempt(model_name: str, timeout: float) -> str:
+            if state["fatal"] and state["exc"] is not None:
+                raise state["exc"]
+            try:
+                response = self.client.models.generate_content(  # type: ignore
+                    model=model_name,
+                    contents=prompt,
+                    config=config,
+                )
+                text = response.text
+                if text and text.strip():
+                    return text
+                raise self._empty_error(response)
+            except errors.APIError as exc:
+                state["exc"] = exc
+                if exc.code not in (500, 502, 503, 504, 429):
+                    state["fatal"] = True
+                logger.warning(
+                    "Gemini API error (%s) on model %s; single attempt, no retry.",
+                    exc.code,
+                    model_name,
+                )
+                raise
+            except Exception as exc:  # noqa: BLE001
+                state["exc"] = exc
+                raise
+
+        res = bounded_model_chain(
+            self._candidate_models(), attempt, budget_s=budget
+        )
+        if res.ok:
+            self._answered_model = res.model
+            return res.text  # type: ignore[return-value]
+        if state["exc"] is not None:
+            raise state["exc"]
+        raise RuntimeError(res.error or "Gemini failed.")
+
     def _call(self, prompt: str, system: str | None = None) -> str:
         config = (
             types.GenerateContentConfig(
@@ -124,40 +168,7 @@ class GeminiProvider(BaseProvider):
             else self._config
         )
 
-        last_error = None
-        for model_name in self._candidate_models():
-            max_attempts = 2
-            for attempt in range(1, max_attempts + 1):
-                try:
-                    response = self.client.models.generate_content(  # type: ignore
-                        model=model_name,
-                        contents=prompt,
-                        config=config,
-                    )
-
-                    text = response.text
-                    if text and text.strip():
-                        return text
-                    raise self._empty_error(response)
-                except errors.APIError as exc:
-                    last_error = exc
-                    if exc.code in (500, 502, 503, 504, 429):
-                        logger.warning(
-                            "Gemini API transient error (%s) on model %s (attempt %s/%s).",
-                            exc.code,
-                            model_name,
-                            attempt,
-                            max_attempts,
-                        )
-                        if attempt < max_attempts:
-                            time.sleep(1)
-                            continue
-                        break
-                    raise
-
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError("Gemini failed after retries.")
+        return self._run_chain(prompt, config)
 
     def _call_structured(
         self,
@@ -175,41 +186,7 @@ class GeminiProvider(BaseProvider):
 
         config = types.GenerateContentConfig(**config_kwargs)
 
-        last_error = None
-        for model_name in self._candidate_models():
-            max_attempts = 2
-            for attempt in range(1, max_attempts + 1):
-                try:
-                    response = self.client.models.generate_content(  # type: ignore
-                        model=model_name,
-                        contents=prompt,
-                        config=config,
-                    )
-
-                    text = response.text
-                    if text and text.strip():
-                        return text
-
-                    raise self._empty_error(response)
-                except errors.APIError as exc:
-                    last_error = exc
-                    if exc.code in (500, 502, 503, 504, 429):
-                        logger.warning(
-                            "Gemini API transient error (%s) on model %s (attempt %s/%s).",
-                            exc.code,
-                            model_name,
-                            attempt,
-                            max_attempts,
-                        )
-                        if attempt < max_attempts:
-                            time.sleep(1)
-                            continue
-                        break
-                    raise
-
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError("Gemini failed after retries.")
+        return self._run_chain(prompt, config)
 
     @staticmethod
     def _empty_error(response: Any) -> LLMError:
