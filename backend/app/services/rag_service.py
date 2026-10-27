@@ -80,12 +80,86 @@ from app.rag.research_gap_finder import ResearchGapFinder
 from app.rag.scoring import calculate_document_iq
 from app.rag.visual_answer import VisualAnswerEngine
 from app.rag.grounded_generation import grounded_generate, NOT_FOUND as GROUNDED_NOT_FOUND
-from app.rag.dual_retriever import DualRetriever, web_chunk_to_source_dict
+from app.rag.dual_retriever import (
+    DualRetriever,
+    _fetch_web_chunks,
+    _web_gaps_from_statuses,
+    web_chunk_to_source_dict,
+)
 from app.reasoning.reasoning_engine import ReasoningEngine
 from app.services.document_service import (
     build_document_metadata,
     save_document_metadata,
 )
+
+
+def _verify_web_failed(statuses):
+    return any(
+        s.get("outcome") in ("error", "timeout", "not_loaded") for s in (statuses or [])
+    )
+
+
+def _verify_web_gaps(statuses):
+    try:
+        return [str(g) for g in _web_gaps_from_statuses(statuses or [])]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _verify_web_note(web_chunks, statuses):
+    parts = []
+    if _verify_web_failed(statuses):
+        parts.extend(_verify_web_gaps(statuses))
+    if web_chunks:
+        parts.append(
+            "Web evidence reflects the retrieved web passages "
+            "(abstracts or snippets), not the full pages."
+        )
+    return (" " + " ".join(parts)) if parts else ""
+
+
+def _verify_empty_response(claim, mode, statuses):
+    if mode == "web" or _verify_web_failed(statuses):
+        verdict = "UNVERIFIABLE"
+    else:
+        verdict = "NOT_FOUND"
+    scope = "web sources" if mode == "web" else "the selected documents or web sources"
+    explanation = (
+        "No usable evidence was retrieved from "
+        + scope
+        + ", so this claim could not be checked. "
+        + " ".join(_verify_web_gaps(statuses))
+    ).strip()
+    return ClaimVerificationResponse(
+        claim=claim,
+        verdict=verdict,
+        confidence=0.0,
+        explanation=explanation,
+        evidence=[],
+        supporting_evidence=[],
+        contradicting_evidence=[],
+        source_chunk_ids=[],
+        sources=[],
+    )
+
+
+def _verify_merge_web(doc_results, web_chunks, budget):
+    docs = list(doc_results or [])
+    web = [
+        web_chunk_to_source_dict(c)
+        for c in (web_chunks or [])
+        if isinstance(c, dict) and c.get("text")
+    ]
+    if not web:
+        return docs
+    web_take = min(len(web), max(1, budget // 2))
+    doc_take = min(len(docs), budget - web_take)
+    web_take = min(len(web), budget - doc_take)
+    merged = docs[:doc_take]
+    for i, item in enumerate(web[:web_take]):
+        item.setdefault("rank", doc_take + i + 1)
+        merged.append(item)
+    return merged
 
 
 class RAGService:
@@ -760,6 +834,8 @@ class RAGService:
         claim: str,
         document_names: list[str] | None = None,
         _split: bool = True,
+        source_mode: str | None = None,
+        _web: tuple | None = None,
     ) -> ClaimVerificationResponse:
         """
 
@@ -770,6 +846,40 @@ class RAGService:
         """
 
         logger.info(f"Verifying claim: {claim}")
+
+        mode = source_mode
+        if mode is not None:
+            from app.rag.source_mode import VALID_MODES
+
+            if mode not in VALID_MODES:
+                raise ValueError("Invalid source_mode: " + repr(mode))
+
+        web = None
+        web_chunks: list = []
+        web_statuses: list = []
+        web_note = ""
+        if mode in ("web", "both"):
+            web = _web
+            if web is None:
+                try:
+                    web = _fetch_web_chunks(claim)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Web retrieval failed: %s", exc)
+                    web = (
+                        [],
+                        [
+                            {
+                                "connector": "web",
+                                "outcome": "error",
+                                "count": 0,
+                                "detail": type(exc).__name__,
+                            }
+                        ],
+                    )
+            web_chunks, web_statuses = web
+            if mode == "web" and not web_chunks:
+                return _verify_empty_response(claim, mode, web_statuses)
+            web_note = _verify_web_note(web_chunks, web_statuses)
 
         if _split:
             try:
@@ -785,8 +895,15 @@ class RAGService:
             parts = self.claim_verifier.select_atomic_claims(claim, raw_parts)
 
             if len(parts) > 1:
+                extra: dict = {}
+                if mode is not None:
+                    extra["source_mode"] = mode
+                if web is not None:
+                    extra["_web"] = web
                 part_results = [
-                    self.verify_claim(part, document_names=document_names, _split=False)
+                    self.verify_claim(
+                        part, document_names=document_names, _split=False, **extra
+                    )
                     for part in parts
                 ]
                 overall = self.claim_verifier.aggregate_verdicts(
@@ -823,7 +940,8 @@ class RAGService:
                     explanation=(
                         f"The claim was checked as {len(part_results)} separate "
                         f"claims: {summary}."
-                    ),
+                    )
+                    + web_note,
                     evidence=merged_supporting + merged_contradicting,
                     source_chunk_ids=merged_ids,
                     supporting_evidence=merged_supporting,
@@ -850,7 +968,19 @@ class RAGService:
 
         # ==================================================
 
-        results = self._search(claim, document_names=document_names)
+        if mode == "web":
+            results = []
+        else:
+            results = self._search(claim, document_names=document_names)
+
+        if mode in ("web", "both"):
+            results = _verify_merge_web(
+                results,
+                web_chunks,
+                getattr(self.context_builder, "max_chunks", 5),
+            )
+            if not results:
+                return _verify_empty_response(claim, mode, web_statuses)
 
         logger.info(f"Retrieved {len(results)} chunks " f"for claim verification.")
 
@@ -936,7 +1066,7 @@ class RAGService:
             claim=verification.claim,
             verdict=verification.verdict.value,
             confidence=verification.confidence,
-            explanation=verification.explanation,
+            explanation=(verification.explanation or "") + web_note,
             evidence=verification.evidence,
             source_chunk_ids=(verification.source_chunk_ids),
             supporting_evidence=verification.supporting_evidence,

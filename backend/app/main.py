@@ -862,8 +862,24 @@ def verify_claim(request: ClaimVerificationRequest):
 
     start_time = time.perf_counter()
 
+    if request.source_mode is not None:
+        from app.rag.source_mode import VALID_MODES
+
+        if request.source_mode not in VALID_MODES:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid source_mode: " + repr(request.source_mode),
+            )
+
     try:
-        response = rag_service.verify_claim(request.claim, document_names=request.document_names)
+        if request.source_mode is None:
+            response = rag_service.verify_claim(request.claim, document_names=request.document_names)
+        else:
+            response = rag_service.verify_claim(
+                request.claim,
+                document_names=request.document_names,
+                source_mode=request.source_mode,
+            )
 
     except RuntimeError as error:
         logger.exception("Claim verification failed.")

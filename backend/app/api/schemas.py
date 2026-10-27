@@ -185,6 +185,13 @@ class ClaimVerificationRequest(BaseModel):
         max_length=1000,
         description="Claim to verify against the indexed documents.",
     )
+    source_mode: str | None = Field(
+        default=None,
+        description=(
+            "Optional evidence source: 'documents' (default, offline), "
+            "'web', or 'both'."
+        ),
+    )
     document_names: list[str] | None = Field(
         default=None,
         description="Optional list of document names to scope retrieval to.",
