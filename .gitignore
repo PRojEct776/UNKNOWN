@@ -283,3 +283,9 @@ usage_report.txt
 frontend_usage.txt
 regression_output.txt
 backend/app/data/shares/
+
+*.bak
+backend/logs/
+backend/dump_out.txt
+backend/part3.txt
+backend/pytest
