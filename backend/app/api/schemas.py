@@ -200,6 +200,19 @@ class ClaimVerificationRequest(BaseModel):
             self.documents = self.document_names
 
 
+class AtomicClaimVerification(BaseModel):
+    """Verdict for one atomic part of a compound claim."""
+
+    claim: str
+    verdict: str
+    confidence: float = 0.0
+    explanation: str = ""
+    evidence: list[str] = Field(default_factory=list)
+    supporting_evidence: list[str] = Field(default_factory=list)
+    contradicting_evidence: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+
+
 class ClaimVerificationResponse(BaseModel):
     """Claim verification API response."""
 
@@ -212,6 +225,7 @@ class ClaimVerificationResponse(BaseModel):
     sources: list[Source]
     supporting_evidence: list[str] = Field(default_factory=list)
     contradicting_evidence: list[str] = Field(default_factory=list)
+    atomic_claims: list[AtomicClaimVerification] = Field(default_factory=list)
 
 
 class ContradictionRequest(BaseModel):

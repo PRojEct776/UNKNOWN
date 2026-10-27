@@ -759,6 +759,7 @@ class RAGService:
         self,
         claim: str,
         document_names: list[str] | None = None,
+        _split: bool = True,
     ) -> ClaimVerificationResponse:
         """
 
@@ -769,6 +770,79 @@ class RAGService:
         """
 
         logger.info(f"Verifying claim: {claim}")
+
+        if _split:
+            try:
+                from app.rag.atomic_claims import split_into_atomic_claims
+
+                raw_parts = split_into_atomic_claims(claim, llm=self.llm)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Atomic claim splitting failed (%s); verifying as one claim.", exc
+                )
+                raw_parts = []
+
+            parts = self.claim_verifier.select_atomic_claims(claim, raw_parts)
+
+            if len(parts) > 1:
+                part_results = [
+                    self.verify_claim(part, document_names=document_names, _split=False)
+                    for part in parts
+                ]
+                overall = self.claim_verifier.aggregate_verdicts(
+                    [item.verdict for item in part_results]
+                )
+                merged_supporting: list[str] = []
+                merged_contradicting: list[str] = []
+                merged_ids: list[str] = []
+                merged_sources: list = []
+                seen_sources: set[str] = set()
+                for item in part_results:
+                    for quote in item.supporting_evidence:
+                        if quote not in merged_supporting:
+                            merged_supporting.append(quote)
+                    for quote in item.contradicting_evidence:
+                        if quote not in merged_contradicting:
+                            merged_contradicting.append(quote)
+                    for chunk_id in item.source_chunk_ids:
+                        if chunk_id not in merged_ids:
+                            merged_ids.append(chunk_id)
+                    for source in item.sources:
+                        key = repr(source)
+                        if key not in seen_sources:
+                            seen_sources.add(key)
+                            merged_sources.append(source)
+
+                summary = "; ".join(
+                    f"[{item.verdict}] {item.claim}" for item in part_results
+                )
+                return ClaimVerificationResponse(
+                    claim=claim,
+                    verdict=overall.value,
+                    confidence=min(item.confidence for item in part_results),
+                    explanation=(
+                        f"The claim was checked as {len(part_results)} separate "
+                        f"claims: {summary}."
+                    ),
+                    evidence=merged_supporting + merged_contradicting,
+                    source_chunk_ids=merged_ids,
+                    supporting_evidence=merged_supporting,
+                    contradicting_evidence=merged_contradicting,
+                    atomic_claims=[
+                        {
+                            "claim": item.claim,
+                            "verdict": item.verdict,
+                            "confidence": item.confidence,
+                            "explanation": item.explanation,
+                            "evidence": item.evidence,
+                            "supporting_evidence": item.supporting_evidence,
+                            "contradicting_evidence": item.contradicting_evidence,
+                            "source_chunk_ids": item.source_chunk_ids,
+                        }
+                        for item in part_results
+                    ],
+                    sources=merged_sources,
+                )
 
         # ==================================================
 

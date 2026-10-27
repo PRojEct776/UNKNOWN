@@ -456,6 +456,73 @@ Confidence must be a number between 0 and 1.
             }
         )
 
+    @staticmethod
+    def select_atomic_claims(original, parts, max_parts=5) -> list[str]:
+        """Validate model-proposed atomic claims; fall back to [original] when unsafe."""
+
+        fallback = [original]
+        if not isinstance(parts, list):
+            return fallback
+
+        original_words = ClaimVerifier._content_words(original)
+        original_quantities = [q for _, q in ClaimVerifier._quantities(original)]
+
+        valid = []
+        seen = set()
+        covered_words = set()
+        covered_quantities = []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            text = str(part.get("text", "") or "").strip()
+            if not text:
+                continue
+            key = ClaimVerifier._norm(text)
+            if key in seen:
+                continue
+            words = ClaimVerifier._content_words(text)
+            if not words or len(words & original_words) / len(words) < 0.6:
+                continue
+            quantities = [q for _, q in ClaimVerifier._quantities(text)]
+            if any(
+                not any(ClaimVerifier._qty_match(q, o) for o in original_quantities)
+                for q in quantities
+            ):
+                continue
+            seen.add(key)
+            valid.append(text)
+            covered_words |= words
+            covered_quantities.extend(quantities)
+
+        if len(valid) < 2 or len(valid) > max_parts:
+            return fallback
+        for o in original_quantities:
+            if not any(ClaimVerifier._qty_match(o, q) for q in covered_quantities):
+                return fallback
+        if original_words:
+            share = len(covered_words & original_words) / len(original_words)
+            if share < 0.6:
+                return fallback
+        return valid
+
+    @staticmethod
+    def aggregate_verdicts(verdicts) -> "ClaimVerdict":
+        """Combine per-part verdicts into one conservative overall verdict."""
+
+        parsed = [ClaimVerdict(v) for v in verdicts]
+        if not parsed:
+            return ClaimVerdict.NOT_FOUND
+        if ClaimVerdict.CONTRADICTED in parsed:
+            return ClaimVerdict.CONTRADICTED
+        if all(v == ClaimVerdict.SUPPORTED for v in parsed):
+            return ClaimVerdict.SUPPORTED
+        if any(v in (ClaimVerdict.SUPPORTED, ClaimVerdict.PARTIALLY_SUPPORTED) for v in parsed):
+            return ClaimVerdict.PARTIALLY_SUPPORTED
+        for label in (ClaimVerdict.UNSUPPORTED, ClaimVerdict.NOT_FOUND, ClaimVerdict.UNVERIFIABLE):
+            if label in parsed:
+                return label
+        return ClaimVerdict.NOT_FOUND
+
     def parse_response(
         self,
         claim: str,
