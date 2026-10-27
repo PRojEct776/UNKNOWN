@@ -1,7 +1,12 @@
 import time
 from types import SimpleNamespace as NS
 
-from llm_fallback import (Bench, bounded_model_chain, is_quota_error, run_fallback)
+from app.llm.llm_fallback import (
+    Bench,
+    bounded_model_chain,
+    is_quota_error,
+    run_fallback,
+)
 
 QUOTA = RuntimeError("429 RESOURCE_EXHAUSTED You exceeded your current quota")
 
