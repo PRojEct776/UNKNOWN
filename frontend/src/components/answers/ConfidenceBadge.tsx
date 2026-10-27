@@ -5,9 +5,10 @@ import type { ConfidenceData, ConfidenceBreakdown } from '../../types/query';
 export interface ConfidenceBadgeProps {
   confidence?: number | ConfidenceData | null;
   value?: number; // legacy backwards compatibility
+  label?: string; // replaces the default 'Evidence score' wording
 }
 
-export const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({ confidence, value }) => {
+export const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({ confidence, value, label }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   // Normalize API confidence
@@ -47,7 +48,7 @@ export const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({ confidence, va
         title="Click to see what this score does and does not measure"
       >
         <Gauge className="h-3.5 w-3.5" aria-hidden="true" />
-        <span>Evidence score {score}%</span>
+        <span>{label ?? 'Evidence score'} {score}%</span>
         {isOpen ? (
           <ChevronUp className="h-3 w-3 opacity-70" aria-hidden="true" />
         ) : (
@@ -179,14 +180,15 @@ export const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({ confidence, va
               className="mt-3 text-[11px] leading-relaxed text-[#f3faf0]/60"
               data-testid="confidence-note"
             >
-              This score reflects how much evidence was found and how reliable its sources
-              are. It does not measure whether the answer is correct.
+              {label
+                ? "This is the verifier's confidence in its verdict for this claim, as reported by the model after reading the quoted passages. It is not independently calibrated and is not a probability that the claim is true."
+                : 'This score reflects how much evidence was found and how reliable its sources are. It does not measure whether the answer is correct.'}
               {breakdown && breakdown.claim_support === 0 &&
                 ' No claims were individually verified for this answer.'}
             </p>
 
             <div className="mt-3.5 border-t border-white/5 pt-2 text-[10px] text-[#f3faf0]/40 font-mono flex justify-between">
-              <span>Formula: UNKNOWN v1.0</span>
+              <span>{label ? 'Source: verifier model' : 'Formula: UNKNOWN v1.0'}</span>
               <span>Not a correctness probability</span>
             </div>
           </div>

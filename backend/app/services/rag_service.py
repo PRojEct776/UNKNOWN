@@ -93,6 +93,12 @@ from app.services.document_service import (
 )
 
 
+def _verify_source_key(source):
+    get = source.get if isinstance(source, dict) else (lambda k, d=None: getattr(source, k, d))
+    key = (get("document"), get("page"), get("chunk_id"), get("url"))
+    return repr(source) if all(v is None for v in key) else repr(key)
+
+
 def _verify_web_failed(statuses):
     return any(
         s.get("outcome") in ("error", "timeout", "not_loaded") for s in (statuses or [])
@@ -925,7 +931,7 @@ class RAGService:
                         if chunk_id not in merged_ids:
                             merged_ids.append(chunk_id)
                     for source in item.sources:
-                        key = repr(source)
+                        key = _verify_source_key(source)
                         if key not in seen_sources:
                             seen_sources.add(key)
                             merged_sources.append(source)
@@ -1006,7 +1012,7 @@ class RAGService:
 
         # ==================================================
 
-        context = self.context_builder.build(results)
+        context = self.context_builder.build(results, claim=claim)
 
         # ==================================================
 

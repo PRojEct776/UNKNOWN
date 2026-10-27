@@ -228,6 +228,7 @@ export interface BackendVerifyResponse {
   claim: string;
   verdict: string;
   confidence: number;
+  confidence_score?: number;
   explanation: string;
   evidence: string[];
   source_chunk_ids: string[];

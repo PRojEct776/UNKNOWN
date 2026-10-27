@@ -236,7 +236,7 @@ export function buildResultFromVerifyResponse(
     answerState: 'answer',
     answer: `[Verdict: ${res.verdict?.toUpperCase() || 'UNVERIFIED'}] ${res.explanation || ''}`,
     detailedAnswer: res.explanation || '',
-    confidence: res.confidence,
+    confidence: res.confidence_score,
     sources: mapBackendSources(res.sources || []),
     evidence: mapBackendEvidence(res.sources || []),
     verification: [verificationItem, ...partItems],

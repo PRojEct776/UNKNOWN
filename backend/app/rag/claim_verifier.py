@@ -240,6 +240,8 @@ Confidence must be a number between 0 and 1.
             .replace("\u201c", '"')
             .replace("\u201d", '"')
         )
+        value = ClaimVerifier._normalize_sci(value)
+        value = re.sub(r"10\s*\^\s*\{?\s*-\s*(\d{1,2})(?:\s*\})?", r"10-\1", value)
         return re.sub(r"\s+", " ", value).strip()
 
     @staticmethod
@@ -285,12 +287,52 @@ Confidence must be a number between 0 and 1.
         words = re.findall(r"[a-z][a-z0-9\-]{2,}", ClaimVerifier._norm(text))
         return {word for word in words if word not in ClaimVerifier._STOP}
 
+    _SUPERSCRIPTS = str.maketrans("\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u207b\u207a", "0123456789-+")
+    _SCI = re.compile(
+        r"(?:(\d+(?:\.\d+)?)\s*[x\u00d7*]\s*)?10\s*\^\s*\{?\s*([-+]?\d+)\s*\}?"
+        r"|\b(\d+(?:\.\d+)?)[eE]([-+]?\d+)\b"
+    )
+
+    @staticmethod
+    def _normalize_sci(text):
+        value = str(text)
+        value = re.sub(r"10\s*\u2212\s*(\d)", r"10^-\1", value)
+        value = re.sub(
+            r"10([\u207b\u207a]?[\u2070\u00b9\u00b2\u00b3\u2074-\u2079]+)",
+            lambda m: "10^" + m.group(1).translate(ClaimVerifier._SUPERSCRIPTS),
+            value,
+        )
+        return value.replace("\u2212", "-")
+
+    _FLAT_EXP = re.compile(r"(?<![\d.])10\s*[-\u2212\u2013](\d{1,2})(?!\d)")
+
+    @staticmethod
+    def _evidence_quantities(text):
+        """Quantities in evidence text. PDF extraction often flattens 10^-6 to
+        '10-6', so that form is also offered as 1e-6 (the plain numbers are kept)."""
+
+        quantities = [q for _, q in ClaimVerifier._quantities(text)]
+        for match in ClaimVerifier._FLAT_EXP.finditer(str(text)):
+            quantities.append((float("1e-" + match.group(1)), ""))
+        return quantities
+
     @staticmethod
     def _quantities(text) -> list:
         """Return [(label, (value, dimension))]; percents are stored as fractions."""
 
         value = re.sub(r"(?<=\d),(?=\d{3})", "", str(text))
+        value = ClaimVerifier._normalize_sci(value)
         found = []
+
+        def _sci(m):
+            if m.group(2) is not None:
+                mant, exp, label = (m.group(1) or "1"), m.group(2), m.group(0).strip()
+            else:
+                mant, exp, label = m.group(3), m.group(4), m.group(0)
+            found.append((label, (float(f"{mant}e{exp}"), "")))
+            return " "
+
+        value = ClaimVerifier._SCI.sub(_sci, value)
         pattern = r"(\d+(?:\.\d+)?)\s*(%|percent\b|[a-zA-Z\u03bc\u00b5]+)?"
         for match in re.finditer(pattern, value):
             number = float(match.group(1))
@@ -320,13 +362,89 @@ Confidence must be a number between 0 and 1.
         return False
 
     def _missing_quantities(self, claim, evidence_text) -> list:
-        available = [q for _, q in self._quantities(evidence_text)]
+        available = self._evidence_quantities(evidence_text)
         missing = []
         for label, quantity in self._quantities(claim):
             matched = any(self._qty_match(quantity, item) for item in available)
             if not matched and label not in missing:
                 missing.append(label)
         return missing
+
+    @staticmethod
+    def focus_text(text, claim, max_chars):
+        """At most max_chars of text, using the window that best matches the claim."""
+
+        text = str(text or "").strip()
+        if not max_chars or len(text) <= max_chars:
+            return text
+        words = ClaimVerifier._content_words(claim) if claim else set()
+        numbers = set(ClaimVerifier._numbers(claim)) if claim else set()
+        if not words and not numbers:
+            return text[:max_chars]
+        last = len(text) - max_chars
+        step = max(50, max_chars // 12)
+        starts = list(range(0, last + 1, step))
+        if starts[-1] != last:
+            starts.append(last)
+        scored = []
+        for start in starts:
+            window = text[start:start + max_chars].lower()
+            plain = re.sub(r"(?<=\d),(?=\d{3})", "", window)
+            score = sum(1 for word in words if word in window)
+            score += 2 * sum(1 for number in numbers if number in plain)
+            scored.append((score, start))
+        best = max(score for score, _ in scored)
+        ties = [start for score, start in scored if score == best]
+        start = ties[len(ties) // 2]
+        return text[start:start + max_chars]
+
+    def _numeric_conflict(self, claim, supporting):
+        """Quotes that give a different number for the same statement as the claim.
+
+        A conflict needs: a claim number missing from the evidence, another claim
+        number that DOES match in the same clause (the anchor), and a different
+        number of the same kind in that clause. Returns (quotes, details) or None."""
+
+        claim_quantities = self._quantities(claim)
+        if len(claim_quantities) < 2:
+            return None
+        available = self._evidence_quantities(" ".join(supporting))
+        missing = [
+            (label, q)
+            for label, q in claim_quantities
+            if not any(self._qty_match(q, item) for item in available)
+        ]
+        if not missing:
+            return None
+        quotes = []
+        details = []
+        for quote in supporting:
+            for clause in re.split(r"(?<=[.;])\s+", str(quote)):
+                clause_quantities = self._quantities(clause)
+                anchored = any(
+                    self._qty_match(q, c)
+                    for _, q in claim_quantities
+                    for _, c in clause_quantities
+                )
+                if not anchored:
+                    continue
+                for m_label, (m_value, m_dim) in missing:
+                    if m_dim == "" and float(m_value).is_integer():
+                        continue
+                    for c_label, (c_value, c_dim) in clause_quantities:
+                        if c_dim != m_dim:
+                            continue
+                        if any(self._qty_match((c_value, c_dim), q) for _, q in claim_quantities):
+                            continue
+                        if m_dim == "" and float(c_value).is_integer():
+                            continue
+                        if quote not in quotes:
+                            quotes.append(quote)
+                        detail = f"the claim says {m_label} but the document says {c_label}"
+                        if detail not in details:
+                            details.append(detail)
+                        break
+        return (quotes, details) if quotes else None
 
     def _is_relevant(self, quote, claim) -> bool:
         """Heuristic: a quote must share a content word or a number with the claim."""
@@ -335,20 +453,19 @@ Confidence must be a number between 0 and 1.
         if claim_words & self._content_words(quote):
             return True
         claim_quantities = self._quantities(claim)
-        quote_quantities = [q for _, q in self._quantities(quote)]
+        quote_quantities = self._evidence_quantities(quote)
         for _, quantity in claim_quantities:
             if any(self._qty_match(quantity, item) for item in quote_quantities):
                 return True
         return not claim_words and not claim_quantities
 
-    def _ground_quotes(self, quotes, chunks, max_chars):
+    def _ground_quotes(self, quotes, chunks, max_chars, claim=None):
         """Keep only quotes found in one visible chunk; return (kept, chunk_ids)."""
 
         texts = []
         for chunk in chunks:
             text = str(chunk.get("text", "") or "").strip()
-            if max_chars and len(text) > max_chars:
-                text = text[:max_chars]
+            text = self.focus_text(text, claim, max_chars)
             chunk_id = chunk.get("chunk_id")
             texts.append((str(chunk_id) if chunk_id is not None else None, self._norm(text)))
 
@@ -390,14 +507,14 @@ Confidence must be a number between 0 and 1.
         if not supporting and not contradicting and result.evidence:
             supporting, contradicting = self._split_legacy(result.verdict, result.evidence)
 
-        supporting, _ = self._ground_quotes(supporting, chunks, max_chars)
-        contradicting, _ = self._ground_quotes(contradicting, chunks, max_chars)
+        supporting, _ = self._ground_quotes(supporting, chunks, max_chars, result.claim)
+        contradicting, _ = self._ground_quotes(contradicting, chunks, max_chars, result.claim)
         grounded_count = len(supporting) + len(contradicting)
         supporting = [q for q in supporting if self._is_relevant(q, result.claim)]
         contradicting = [q for q in contradicting if self._is_relevant(q, result.claim)]
         irrelevant_removed = len(supporting) + len(contradicting) < grounded_count
-        supporting, ids_s = self._ground_quotes(supporting, chunks, max_chars)
-        contradicting, ids_c = self._ground_quotes(contradicting, chunks, max_chars)
+        supporting, ids_s = self._ground_quotes(supporting, chunks, max_chars, result.claim)
+        contradicting, ids_c = self._ground_quotes(contradicting, chunks, max_chars, result.claim)
         ids = ids_s + [item for item in ids_c if item not in ids_s]
 
         verdict = result.verdict
@@ -435,6 +552,14 @@ Confidence must be a number between 0 and 1.
             )
 
         explanation = result.explanation
+        if verdict in (ClaimVerdict.SUPPORTED, ClaimVerdict.PARTIALLY_SUPPORTED) and supporting:
+            conflict = self._numeric_conflict(result.claim, supporting)
+            if conflict:
+                conflict_quotes, details = conflict
+                verdict = ClaimVerdict.CONTRADICTED
+                contradicting = contradicting + [q for q in conflict_quotes if q not in contradicting]
+                supporting = [q for q in supporting if q not in conflict_quotes]
+                explanation = "Number mismatch: " + "; ".join(details) + "."
         if verdict == ClaimVerdict.SUPPORTED:
             missing = self._missing_quantities(result.claim, " ".join(supporting))
             if missing:
@@ -468,6 +593,8 @@ Confidence must be a number between 0 and 1.
         original_quantities = [q for _, q in ClaimVerifier._quantities(original)]
 
         valid = []
+        part_words = []
+        part_quants = []
         seen = set()
         covered_words = set()
         covered_quantities = []
@@ -491,8 +618,26 @@ Confidence must be a number between 0 and 1.
                 continue
             seen.add(key)
             valid.append(text)
+            part_words.append(words)
+            part_quants.append(quantities)
             covered_words |= words
             covered_quantities.extend(quantities)
+
+        keep = []
+        for i, words_i in enumerate(part_words):
+            redundant = any(
+                j != i
+                and words_i <= part_words[j]
+                and all(
+                    any(ClaimVerifier._qty_match(q, o) for o in part_quants[j])
+                    for q in part_quants[i]
+                )
+                and (words_i != part_words[j] or j < i)
+                for j in range(len(valid))
+            )
+            if not redundant:
+                keep.append(i)
+        valid = [valid[i] for i in keep]
 
         if len(valid) < 2 or len(valid) > max_parts:
             return fallback

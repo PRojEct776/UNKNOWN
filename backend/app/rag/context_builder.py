@@ -13,7 +13,7 @@ class ContextBuilder:
         self.max_chunks = max_chunks
         self.max_chars = max_chars
 
-    def build(self, search_results: list[dict]) -> str:
+    def build(self, search_results: list[dict], claim=None) -> str:
         """
         Convert HybridSearch.search() output into Gemini context.
 
@@ -50,7 +50,12 @@ class ContextBuilder:
 
             # Limit chunk length for Gemini
             if len(text) > self.max_chars:
-                text = text[: self.max_chars] + "..."
+                if claim:
+                    from app.rag.claim_verifier import ClaimVerifier
+
+                    text = ClaimVerifier.focus_text(text, claim, self.max_chars) + "..."
+                else:
+                    text = text[: self.max_chars] + "..."
 
             block = f"""
 ### Source {rank}

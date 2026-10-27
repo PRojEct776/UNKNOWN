@@ -233,6 +233,14 @@ class ClaimVerificationResponse(BaseModel):
     supporting_evidence: list[str] = Field(default_factory=list)
     contradicting_evidence: list[str] = Field(default_factory=list)
     atomic_claims: list[AtomicClaimVerification] = Field(default_factory=list)
+    # Whole-number percent (0-100) derived from `confidence` so clients display it as is.
+    confidence_score: int | None = None
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self.confidence_score is None:
+            clipped = max(0.0, min(1.0, float(self.confidence)))
+            self.confidence_score = int(round(clipped * 100))
 
 
 class ContradictionRequest(BaseModel):

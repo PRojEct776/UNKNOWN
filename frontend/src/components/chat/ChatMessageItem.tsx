@@ -291,7 +291,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-white tracking-wide">UNKNOWN Research</span>
               {result?.confidence !== undefined && result?.confidence !== null && (
-                <ConfidenceBadge confidence={result.confidence} />
+                <ConfidenceBadge confidence={result.confidence} label={result?.verification?.length ? 'Verdict confidence' : undefined} />
               )}
             </div>
 
@@ -302,7 +302,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#141d26] hover:bg-[#1b2632] border border-[#4d728e]/35 text-xs text-[#a7d0d2] hover:text-white transition-colors cursor-pointer"
               >
                 <BookOpen className="w-3.5 h-3.5" />
-                <span>{result.sources.length} sources</span>
+                <span>{result.sources.length} {result?.verification?.length ? (result.sources.length === 1 ? 'retrieved passage' : 'retrieved passages') : 'sources'}</span>
               </button>
             )}
           </div>
