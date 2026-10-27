@@ -192,26 +192,44 @@ export function buildResultFromReasoningResponse(
   };
 }
 
+function verifyAssessment(
+  verdict: string | undefined,
+): 'supported' | 'contradicted' | 'uncertain' {
+  const normalized = (verdict || '').toUpperCase().trim();
+  if (normalized === 'SUPPORTED') return 'supported';
+  if (normalized === 'CONTRADICTED') return 'contradicted';
+  return 'uncertain';
+}
+
 export function buildResultFromVerifyResponse(
   query: string,
   res: BackendVerifyResponse,
 ): WorkspaceResult {
   const base = createBaseWorkspaceResult(query, 'verify');
-  const rawVerdict = (res.verdict || 'uncertain').toLowerCase();
-  const assessment: 'supported' | 'contradicted' | 'uncertain' =
-    rawVerdict.includes('support') && !rawVerdict.includes('unsupported')
-      ? 'supported'
-      : rawVerdict.includes('contradict')
-      ? 'contradicted'
-      : 'uncertain';
+  const assessment = verifyAssessment(res.verdict);
 
   const verificationItem = {
     claim: res.claim || query,
     assessment,
     explanation: res.explanation || 'Verification performed against indexed document evidence.',
     evidenceIds: res.source_chunk_ids || [],
-    counterEvidenceIds: [],
+    counterEvidenceIds: [] as string[],
+    verdict: res.verdict,
+    supportingQuotes: res.supporting_evidence || [],
+    contradictingQuotes: res.contradicting_evidence || [],
   };
+
+  const partItems = (res.atomic_claims || []).map((part) => ({
+    claim: part.claim,
+    assessment: verifyAssessment(part.verdict),
+    explanation: part.explanation || 'No explanation was provided for this part.',
+    evidenceIds: part.source_chunk_ids || [],
+    counterEvidenceIds: [] as string[],
+    verdict: part.verdict,
+    supportingQuotes: part.supporting_evidence || [],
+    contradictingQuotes: part.contradicting_evidence || [],
+    partOfClaim: true,
+  }));
 
   return {
     ...base,
@@ -221,7 +239,7 @@ export function buildResultFromVerifyResponse(
     confidence: res.confidence,
     sources: mapBackendSources(res.sources || []),
     evidence: mapBackendEvidence(res.sources || []),
-    verification: [verificationItem],
+    verification: [verificationItem, ...partItems],
     rawResponse: res,
   };
 }

@@ -18,18 +18,50 @@ const assessmentStyle: Record<ClaimAssessment, string> = {
   uncertain: 'border-amber-200/30 bg-amber-200/10 text-amber-100',
 };
 
+const VERDICT_LABELS: Record<string, string> = {
+  SUPPORTED: 'Supported',
+  PARTIALLY_SUPPORTED: 'Partially supported',
+  CONTRADICTED: 'Contradicted',
+  UNSUPPORTED: 'Unsupported',
+  UNVERIFIABLE: 'Unverifiable',
+  NOT_FOUND: 'No evidence found',
+};
+
+const verdictLabel = (verdict: string | undefined, fallback: string): string =>
+  (verdict && VERDICT_LABELS[verdict.toUpperCase().trim()]) || fallback;
+
 export const VerificationView: React.FC<AnalysisViewProps & { results: ClaimVerification[] }> = ({ results, onOpenSources }) => (
   <section className="refire-card p-5" aria-labelledby="verification-title">
     <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#a7d0d2]" /><h2 id="verification-title" className="text-xs font-mono uppercase text-[#f3faf0]/75">Claim verification</h2></div>
     <div className="mt-4 space-y-3">
-      {results.map((result) => {
+      {results.map((result, index) => {
         const evidenceCount = result.evidenceIds.length + result.counterEvidenceIds.length;
         return (
-          <article key={result.claim} className="rounded-lg border border-white/8 bg-[#0b1219]/60 p-4">
+          <article key={`${index}-${result.claim}`} className={`rounded-lg border border-white/8 bg-[#0b1219]/60 p-4 ${result.partOfClaim ? 'ml-4' : ''}`}>
             <p className="text-sm text-white">“{result.claim}”</p>
-            <span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${assessmentStyle[result.assessment]}`}>{result.assessment}</span>
+            <span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${assessmentStyle[result.assessment]}`}>{verdictLabel(result.verdict, result.assessment)}</span>
             <p className="mt-2 text-xs leading-relaxed text-[#f3faf0]/70">{result.explanation}</p>
-            <EvidenceButton count={evidenceCount} onOpenSources={onOpenSources} />
+            {(result.supportingQuotes ?? []).length > 0 && (
+              <div className="mt-3">
+                <p className="text-[10px] font-mono uppercase text-emerald-200/80">Supporting evidence</p>
+                <ul className="mt-1 space-y-1">
+                  {(result.supportingQuotes ?? []).map((quote, quoteIndex) => (
+                    <li key={quoteIndex} className="text-xs italic text-[#f3faf0]/70">{quote}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(result.contradictingQuotes ?? []).length > 0 && (
+              <div className="mt-3">
+                <p className="text-[10px] font-mono uppercase text-rose-200/80">Contradicting evidence</p>
+                <ul className="mt-1 space-y-1">
+                  {(result.contradictingQuotes ?? []).map((quote, quoteIndex) => (
+                    <li key={quoteIndex} className="text-xs italic text-[#f3faf0]/70">{quote}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {evidenceCount > 0 && <EvidenceButton count={evidenceCount} onOpenSources={onOpenSources} />}
             {result.counterEvidenceIds.length > 0 && <p className="mt-1 text-[10px] text-rose-200/70">Contradicting evidence is tracked separately.</p>}
           </article>
         );

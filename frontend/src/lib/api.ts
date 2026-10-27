@@ -213,6 +213,17 @@ export interface BackendReasoningResponse {
   sources: BackendQuerySource[];
 }
 
+export interface BackendAtomicClaimVerification {
+  claim: string;
+  verdict: string;
+  confidence?: number;
+  explanation?: string;
+  evidence?: string[];
+  supporting_evidence?: string[];
+  contradicting_evidence?: string[];
+  source_chunk_ids?: string[];
+}
+
 export interface BackendVerifyResponse {
   claim: string;
   verdict: string;
@@ -222,6 +233,7 @@ export interface BackendVerifyResponse {
   source_chunk_ids: string[];
   supporting_evidence?: string[];
   contradicting_evidence?: string[];
+  atomic_claims?: BackendAtomicClaimVerification[];
   sources: BackendQuerySource[];
 }
 

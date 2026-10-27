@@ -6,6 +6,10 @@ export interface ClaimVerification {
   explanation: string;
   evidenceIds: string[];
   counterEvidenceIds: string[];
+  verdict?: string;
+  supportingQuotes?: string[];
+  contradictingQuotes?: string[];
+  partOfClaim?: boolean;
 }
 
 export interface ComparisonRow {
