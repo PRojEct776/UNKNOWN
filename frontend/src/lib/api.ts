@@ -594,12 +594,17 @@ export async function verifyClaimBackend(
   claim: string,
   documentNames?: string[],
   signal?: AbortSignal,
+  sourceMode?: 'documents' | 'web' | 'both',
 ): Promise<BackendVerifyResponse> {
   return apiFetch<BackendVerifyResponse>(
     '/verify',
     {
       method: 'POST',
-      body: JSON.stringify({ claim, document_names: documentNames ?? null }),
+      body: JSON.stringify({
+        claim,
+        document_names: documentNames ?? null,
+        ...(sourceMode ? { source_mode: sourceMode } : {}),
+      }),
     },
     DEFAULT_QUERY_TIMEOUT_MS,
     signal,

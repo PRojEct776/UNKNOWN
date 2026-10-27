@@ -496,7 +496,7 @@ export const KnowledgeWorkspacePage: React.FC = () => {
           break;
         }
         case 'verify': {
-          const resp = await verifyClaimBackend(currentText, targetDocs, controller.signal);
+          const resp = await verifyClaimBackend(currentText, targetDocs, controller.signal, currentSourceMode);
           workspaceResult = buildResultFromVerifyResponse(currentText, resp);
           break;
         }
