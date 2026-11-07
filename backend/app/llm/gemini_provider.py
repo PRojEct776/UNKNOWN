@@ -9,17 +9,17 @@ thinking tokens count against max_output_tokens.
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 import httpx
 from google import genai
-from google.genai import errors, types
+from google.genai import errors, types  # type: ignore
 
 from app.llm.base_provider import (
     BaseProvider,
     ErrorKind,
     LLMError,
+    LLMResponse,
     kind_from_http_status,
 )
 from app.rag.config import settings
@@ -145,13 +145,11 @@ class GeminiProvider(BaseProvider):
                     model_name,
                 )
                 raise
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 state["exc"] = exc
                 raise
 
-        res = bounded_model_chain(
-            self._candidate_models(), attempt, budget_s=budget
-        )
+        res = bounded_model_chain(self._candidate_models(), attempt, budget_s=budget)
         if res.ok:
             self._answered_model = res.model
             return res.text  # type: ignore[return-value]
@@ -217,66 +215,38 @@ class GeminiProvider(BaseProvider):
             ErrorKind.EMPTY, f"Empty Gemini response, finish_reason={finish}{hint}."
         )
 
-    def generate_at_zero_temperature(self, prompt: str) -> "LLMResponse":
-        """Call Gemini at temperature=0 for grounded generation (Task A1)."""
+    def generate_at_zero_temperature(self, prompt: str) -> LLMResponse:
+        """Generate grounded text through the bounded Gemini chain."""
         from time import perf_counter
-        from app.llm.base_provider import LLMResponse
 
         start = perf_counter()
-        # Build a zero-temperature config, preserving other settings
-        config_kwargs = {k: v for k, v in self._config_kwargs.items()}
-        config_kwargs["temperature"] = 0.0
+
+        config_kwargs = {**self._config_kwargs, "temperature": 0.0}
         config = types.GenerateContentConfig(**config_kwargs)
 
-        error_msg: str | None = None
-        error_kind = None
-        answer = ""
         try:
-            last_error = None
-            for model_name in self._candidate_models():
-                for attempt in range(1, 3):
-                    try:
-                        response = self.client.models.generate_content(  # type: ignore
-                            model=model_name,
-                            contents=prompt,
-                            config=config,
-                        )
-                        text = response.text
-                        if text and text.strip():
-                            answer = text.strip()
-                            return LLMResponse(
-                                answer=answer,
-                                provider=self.provider_name,
-                                model=model_name,
-                                latency_ms=round((perf_counter() - start) * 1000, 2),
-                                success=True,
-                            )
-                        last_error = self._empty_error(response)
-                        break
-                    except Exception as exc:
-                        last_error = exc
-                        import time as _time
-                        _time.sleep(1)
-            if last_error is not None:
-                raise last_error
-        except Exception as exc:
-            from app.llm.base_provider import ErrorKind as EK
-            error_msg = str(exc)[:500]
-            error_kind = self._kind_of(exc)
-
-        return LLMResponse(
-            answer="",
-            provider=self.provider_name,
-            model=self.model,
-            latency_ms=round((perf_counter() - start) * 1000, 2),
-            success=False,
-            error=error_msg,
-            error_kind=error_kind,
-        )
+            answer = self._run_chain(prompt, config)
+            return LLMResponse(
+                answer=answer.strip(),
+                provider=self.provider_name,
+                model=getattr(self, "_answered_model", self.model),
+                latency_ms=round((perf_counter() - start) * 1000, 2),
+                success=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return LLMResponse(
+                answer="",
+                provider=self.provider_name,
+                model=self.model,
+                latency_ms=round((perf_counter() - start) * 1000, 2),
+                success=False,
+                error=f"{type(exc).__name__}: {str(exc)[:500]}",
+                error_kind=self._kind_of(exc),
+            )
 
     def _classify(self, exc: Exception) -> ErrorKind:
         if isinstance(exc, errors.APIError):
-            code = exc.code
+            code = exc.code  # type: ignore
             # Gemini reports a bad API key as 400 INVALID_ARGUMENT.
             text = str(exc)
             if code == 400 and (

@@ -32,7 +32,7 @@ from app.llm.openrouter_provider import OpenRouterProvider
 from app.rag.config import settings
 from app.rag.logger import logger
 
-DEFAULT_ORDER = "gemini,groq,cerebras,openrouter"
+DEFAULT_ORDER = "gemini,groq,cohere,openrouter,cloudflare"
 DEFAULT_TOTAL_TIMEOUT_S = 25.0
 
 _REGISTRY: dict[str, type[BaseProvider]] = {
