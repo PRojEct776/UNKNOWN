@@ -824,6 +824,13 @@ def reason(request: ReasoningRequest):
             subquestions=result.get("subquestions", []),
             answer=result["answer"],
             sources=sources,
+            steps=result.get("steps"),
+            sub_questions=result.get("sub_questions"),
+            synthesis=result.get("synthesis"),
+            final_answer=result.get("final_answer"),
+            confidence=result.get("confidence"),
+            conflicts=result.get("conflicts"),
+            uncertainty=result.get("uncertainty"),
         )
     except Exception as error:
         logger.exception("Reasoning endpoint failed.")

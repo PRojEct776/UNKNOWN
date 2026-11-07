@@ -88,9 +88,18 @@ class CohereProvider(BaseProvider):
             status_code = getattr(response, "status_code", None)
 
         if isinstance(status_code, int):
+            if status_code == 413:
+                return ErrorKind.PAYLOAD_TOO_LARGE
             return kind_from_http_status(status_code)
 
-        if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError)):
+        if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, TimeoutError)):
             return ErrorKind.TRANSIENT
+
+        msg = str(exc).lower()
+        if "timeout" in msg or "timed out" in msg or "read timeout" in msg:
+            return ErrorKind.TRANSIENT
+
+        if "payload too large" in msg or "too large" in msg or "413" in msg:
+            return ErrorKind.PAYLOAD_TOO_LARGE
 
         return ErrorKind.UNKNOWN

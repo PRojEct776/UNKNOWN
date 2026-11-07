@@ -115,8 +115,18 @@ class OpenAICompatProvider(BaseProvider):
         )
 
     def _classify(self, exc: Exception) -> ErrorKind:
+        msg = str(exc).lower()
         if isinstance(exc, openai.APIStatusError):
-            return kind_from_http_status(exc.status_code)  # type: ignore
+            status = getattr(exc, "status_code", 0)
+            if (
+                status == 413
+                or "payload too large" in msg
+                or "request entity too large" in msg
+                or "tokens per minute" in msg
+                or "tpm" in msg
+            ):
+                return ErrorKind.PAYLOAD_TOO_LARGE
+            return kind_from_http_status(status)  # type: ignore
         if isinstance(
             exc,
             (
@@ -127,6 +137,16 @@ class OpenAICompatProvider(BaseProvider):
             ),
         ):
             return ErrorKind.TRANSIENT
+        if "timeout" in msg or "timed out" in msg:
+            return ErrorKind.TRANSIENT
+        if (
+            "payload too large" in msg
+            or "request entity too large" in msg
+            or "tokens per minute" in msg
+            or "tpm" in msg
+            or "413" in msg
+        ):
+            return ErrorKind.PAYLOAD_TOO_LARGE
         return ErrorKind.UNKNOWN
 
     def close(self) -> None:

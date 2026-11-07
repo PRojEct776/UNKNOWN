@@ -21,4 +21,6 @@ export interface ReasoningResult {
   synthesis: string;
   finalAnswer: string;
   steps: ReasoningStep[];
+  conflicts?: string[];
+  uncertainty?: string;
 }

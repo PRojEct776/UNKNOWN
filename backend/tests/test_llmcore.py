@@ -133,7 +133,7 @@ def test_kind_from_http_status():
         401: ErrorKind.FATAL, 402: ErrorKind.FATAL, 403: ErrorKind.FATAL,
         404: ErrorKind.FATAL, 429: ErrorKind.RATE_LIMIT, 408: ErrorKind.TRANSIENT,
         499: ErrorKind.TRANSIENT, 500: ErrorKind.TRANSIENT, 503: ErrorKind.TRANSIENT,
-        400: ErrorKind.INVALID_REQUEST, 413: ErrorKind.INVALID_REQUEST,
+        400: ErrorKind.INVALID_REQUEST, 413: ErrorKind.PAYLOAD_TOO_LARGE,
         422: ErrorKind.INVALID_REQUEST, 200: ErrorKind.UNKNOWN,
     }  # fmt: skip
     for status, kind in table.items():
@@ -349,7 +349,8 @@ def test_compat_success_sends_system_and_params():
 
 def test_compat_http_errors_are_classified():
     for status, kind in [(429, ErrorKind.RATE_LIMIT), (401, ErrorKind.FATAL),
-                         (400, ErrorKind.INVALID_REQUEST), (503, ErrorKind.TRANSIENT)]:  # fmt: skip
+                         (400, ErrorKind.INVALID_REQUEST), (503, ErrorKind.TRANSIENT),
+                         (413, ErrorKind.PAYLOAD_TOO_LARGE)]:  # fmt: skip
         p = _provider_with_transport(
             lambda request, s=status: httpx.Response(
                 s, json={"error": {"message": "e"}}
@@ -357,6 +358,45 @@ def test_compat_http_errors_are_classified():
         )
         r = p.generate("q")
         assert not r.success and r.error_kind is kind, (status, r.error_kind)
+
+
+def test_groq_tpm_error_classified_as_payload_too_large():
+    p = _provider_with_transport(
+        lambda request: httpx.Response(
+            400,
+            json={
+                "error": {
+                    "message": "Rate limit reached for model `llama-3.3-70b-versatile` on tokens per minute (TPM). Limit: 8000, Requested: 8185.",
+                    "type": "tokens",
+                    "code": "rate_limit_exceeded",
+                }
+            },
+        )
+    )
+    r = p.generate("long query")
+    assert not r.success
+    assert r.error_kind is ErrorKind.PAYLOAD_TOO_LARGE
+
+
+def test_orchestrator_compacts_prompt_on_payload_too_large():
+    a = ScriptedProvider("a", LLMError(ErrorKind.PAYLOAD_TOO_LARGE, "Prompt too large"))
+    b = ScriptedProvider("b", "compact success")
+    orch = make(a, b)
+    long_prompt = "Header\n" + ("x" * 15000) + "\nFooter"
+    r = orch.generate(long_prompt)
+    assert r.success
+    assert r.provider == "b"
+    assert b.calls == 1
+    received_prompt, _ = b.last_args
+    assert len(received_prompt) <= 10500
+    assert "[...context compacted for model capacity...]" in received_prompt
+
+
+def test_payload_too_large_never_benches_provider():
+    h = HealthTracker(HealthPolicy(failure_threshold=2), FakeClock())
+    for _ in range(5):
+        h.record(fail("p", ErrorKind.PAYLOAD_TOO_LARGE))
+    assert h.is_available("p")
 
 
 def test_compat_timeout_is_transient():

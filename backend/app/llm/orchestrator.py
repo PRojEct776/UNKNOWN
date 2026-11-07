@@ -33,7 +33,7 @@ from app.rag.config import settings
 from app.rag.logger import logger
 
 DEFAULT_ORDER = "gemini,groq,cohere,openrouter,cloudflare"
-DEFAULT_TOTAL_TIMEOUT_S = 25.0
+DEFAULT_TOTAL_TIMEOUT_S = 45.0
 
 _REGISTRY: dict[str, type[BaseProvider]] = {
     "gemini": GeminiProvider,
@@ -104,6 +104,15 @@ class LLMOrchestrator:
     # Generation
     # ------------------------------------------------------
 
+    @staticmethod
+    def _compact_prompt(prompt: str, max_chars: int = 10000) -> str:
+        """Compact prompt when payload size exceeds provider limits."""
+        if len(prompt) <= max_chars:
+            return prompt
+        head = prompt[: int(max_chars * 0.6)]
+        tail = prompt[-int(max_chars * 0.4) :]
+        return head + "\n\n[...context compacted for model capacity...]\n\n" + tail
+
     def generate(self, prompt: str, system: str | None = None) -> LLMResponse:
         start = perf_counter()
 
@@ -113,13 +122,14 @@ class LLMOrchestrator:
         deadline = monotonic() + self.total_timeout_s
         failures: list[str] = []
         last_kind: ErrorKind | None = None
+        current_prompt = prompt
 
         for provider in self._candidates():
             if failures and monotonic() >= deadline:
                 logger.warning("LLM time budget spent; not trying further providers.")
                 break
 
-            response = provider.generate(prompt, system)
+            response = provider.generate(current_prompt, system)
             self.health.record(response)
 
             if response.success:
@@ -133,6 +143,8 @@ class LLMOrchestrator:
 
             failures.append(f"{response.provider}: {response.error}")
             last_kind = response.error_kind
+            if response.error_kind == ErrorKind.PAYLOAD_TOO_LARGE:
+                current_prompt = self._compact_prompt(current_prompt)
 
         return self._failure(start, " | ".join(failures), last_kind)
 
@@ -146,6 +158,7 @@ class LLMOrchestrator:
         deadline = monotonic() + self.total_timeout_s
         failures: list[str] = []
         last_kind: ErrorKind | None = None
+        current_prompt = prompt
 
         for provider in self._candidates():
             if failures and monotonic() >= deadline:
@@ -155,9 +168,9 @@ class LLMOrchestrator:
             # Use temperature-override method when available (Task A1)
             _call_zero = getattr(provider, "generate_at_zero_temperature", None)
             if callable(_call_zero):
-                response = _call_zero(prompt)
+                response = _call_zero(current_prompt)
             else:
-                response = provider.generate(prompt)
+                response = provider.generate(current_prompt)
 
             self.health.record(response)
 
@@ -166,6 +179,8 @@ class LLMOrchestrator:
 
             failures.append(f"{response.provider}: {response.error}")
             last_kind = response.error_kind
+            if response.error_kind == ErrorKind.PAYLOAD_TOO_LARGE:
+                current_prompt = self._compact_prompt(current_prompt)
 
         return self._failure(start, " | ".join(failures), last_kind)
 
@@ -187,6 +202,7 @@ class LLMOrchestrator:
         deadline = monotonic() + self.total_timeout_s
         failures: list[str] = []
         last_kind: ErrorKind | None = None
+        current_prompt = prompt
 
         for provider in self._candidates():
             if failures and monotonic() >= deadline:
@@ -196,7 +212,7 @@ class LLMOrchestrator:
                 )
                 break
 
-            response = provider.generate_structured(prompt, system)
+            response = provider.generate_structured(current_prompt, system)
             self.health.record(response)
 
             if response.success:
@@ -210,6 +226,8 @@ class LLMOrchestrator:
 
             failures.append(f"{response.provider}: {response.error}")
             last_kind = response.error_kind
+            if response.error_kind == ErrorKind.PAYLOAD_TOO_LARGE:
+                current_prompt = self._compact_prompt(current_prompt)
 
         return self._failure(
             start,

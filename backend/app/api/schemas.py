@@ -606,6 +606,20 @@ class ReasoningRequest(BaseModel):
             self.documents = self.document_names
 
 
+class ReasoningStepSchema(BaseModel):
+    id: str
+    title: str
+    description: str
+    status: str = "complete"
+
+
+class SubQuestionDetailSchema(BaseModel):
+    id: str
+    question: str
+    evidenceIds: list[str] = Field(default_factory=list)
+    synthesis: str = ""
+
+
 class ReasoningResponse(BaseModel):
     """Multi-step reasoning API response."""
 
@@ -613,6 +627,13 @@ class ReasoningResponse(BaseModel):
     subquestions: list[str]
     answer: str
     sources: list[Source]
+    steps: list[ReasoningStepSchema] | None = None
+    sub_questions: list[SubQuestionDetailSchema] | None = None
+    synthesis: str | None = None
+    final_answer: str | None = None
+    confidence: float | None = None
+    conflicts: list[str] | None = None
+    uncertainty: str | None = None
 
 
 class QueryAssistantRequest(BaseModel):

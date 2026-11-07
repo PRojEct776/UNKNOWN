@@ -157,36 +157,65 @@ export function buildResultFromReasoningResponse(
   res: BackendReasoningResponse,
 ): WorkspaceResult {
   const base = createBaseWorkspaceResult(query, 'reason');
-  const answerText = res.answer?.trim() || 'Not found in available sources.';
+  const answerText = (res.final_answer || res.answer || '').trim() || 'Not found in available sources.';
+  const synthesisText = (res.synthesis || res.answer || '').trim() || answerText;
 
-  const steps: ReasoningStep[] = (res.subquestions || []).map((subq, i) => ({
-    id: `step_${i + 1}`,
-    title: `Sub-question ${i + 1}: ${subq.slice(0, 40)}`,
-    description: `Analyzed sub-question: ${subq}`,
-    status: 'complete',
-  }));
+  // Use rich structured steps from backend if available, otherwise map from subquestions
+  const steps: ReasoningStep[] = (res.steps && res.steps.length > 0)
+    ? res.steps.map((s, i) => ({
+        id: s.id || `step_${i + 1}`,
+        title: s.title || `Step ${i + 1}`,
+        description: s.description || '',
+        status: (s.status as 'complete' | 'current' | 'upcoming') || 'complete',
+      }))
+    : (res.subquestions || []).map((subq, i) => ({
+        id: `step_${i + 1}`,
+        title: `Sub-question ${i + 1}: ${subq.slice(0, 40)}`,
+        description: `Analyzed sub-question: ${subq}`,
+        status: 'complete',
+      }));
 
-  const subQuestions: SubQuestion[] = (res.subquestions || []).map((subq, i) => ({
-    id: `subq_${i + 1}`,
-    question: subq,
-    evidenceIds: (res.sources || []).map((s) => s.chunk_id),
-    synthesis: `Grounded evidence aligned for: ${subq}`,
-  }));
+  // Use rich sub_questions with linked evidence IDs from backend if available
+  const subQuestions: SubQuestion[] = (res.sub_questions && res.sub_questions.length > 0)
+    ? res.sub_questions.map((sq, i) => ({
+        id: sq.id || `subq_${i + 1}`,
+        question: sq.question,
+        evidenceIds: sq.evidenceIds || [],
+        synthesis: sq.synthesis || `Grounded evidence aligned for: ${sq.question}`,
+      }))
+    : (res.subquestions || []).map((subq, i) => ({
+        id: `subq_${i + 1}`,
+        question: subq,
+        evidenceIds: (res.sources || []).map((s) => s.chunk_id),
+        synthesis: `Grounded evidence aligned for: ${subq}`,
+      }));
+
+  const retrievalGaps: string[] = [];
+  if (res.uncertainty) {
+    retrievalGaps.push(res.uncertainty);
+  }
+  if (res.conflicts && res.conflicts.length > 0) {
+    retrievalGaps.push(...res.conflicts);
+  }
 
   return {
     ...base,
     answerState: 'answer',
     answer: answerText,
-    detailedAnswer: answerText,
+    detailedAnswer: synthesisText,
+    confidence: typeof res.confidence === 'number' ? res.confidence : base.confidence,
     sources: mapBackendSources(res.sources || []),
     evidence: mapBackendEvidence(res.sources || []),
+    gaps: retrievalGaps.length > 0 ? retrievalGaps : undefined,
     reasoning: {
       originalQuestion: res.query || query,
       subQuestions,
       evidence: mapBackendEvidence(res.sources || []),
-      synthesis: answerText,
+      synthesis: synthesisText,
       finalAnswer: answerText,
       steps,
+      conflicts: res.conflicts,
+      uncertainty: res.uncertainty,
     },
     rawResponse: res,
   };

@@ -77,6 +77,15 @@ export const FAST_TIMEOUT_MS: number = (() => {
   return Number.isFinite(parsed) && parsed >= 500 ? parsed : 5000;
 })();
 
+/** Dedicated timeout for multi-step deep reasoning queries (120s) without inflating global query timeouts. */
+export const REASONING_TIMEOUT_MS: number = (() => {
+  const raw = import.meta.env.VITE_REASONING_TIMEOUT_MS as string | undefined;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed >= 500
+    ? parsed
+    : Math.max(DEFAULT_QUERY_TIMEOUT_MS, 120_000);
+})();
+
 // ---------------------------------------------------------------------------
 // Shared fetch helper with AbortController & Timeout
 // ---------------------------------------------------------------------------
@@ -206,11 +215,32 @@ export interface BackendQueryResponse {
   sources: BackendQuerySource[];
 }
 
+export interface BackendReasoningStep {
+  id: string;
+  title: string;
+  description: string;
+  status: 'complete' | 'current' | 'upcoming';
+}
+
+export interface BackendSubQuestionDetail {
+  id: string;
+  question: string;
+  evidenceIds: string[];
+  synthesis: string;
+}
+
 export interface BackendReasoningResponse {
   query: string;
   subquestions: string[];
   answer: string;
   sources: BackendQuerySource[];
+  steps?: BackendReasoningStep[];
+  sub_questions?: BackendSubQuestionDetail[];
+  synthesis?: string;
+  final_answer?: string;
+  confidence?: number;
+  conflicts?: string[];
+  uncertainty?: string;
 }
 
 export interface BackendAtomicClaimVerification {
@@ -582,7 +612,7 @@ export async function reasonBackend(
       method: 'POST',
       body: JSON.stringify({ query, document_names: documentNames ?? null }),
     },
-    DEFAULT_QUERY_TIMEOUT_MS,
+    REASONING_TIMEOUT_MS,
     signal,
   );
 }

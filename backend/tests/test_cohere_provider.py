@@ -93,3 +93,21 @@ def test_cohere_rate_limit_is_classified():
 
     assert not response.success
     assert response.error_kind is ErrorKind.RATE_LIMIT
+
+
+def test_cohere_payload_too_large_is_classified():
+    provider = object.__new__(CohereProvider)
+
+    class FakeClient:
+        def chat(self, **kwargs):
+            error = RuntimeError("Request entity too large: prompt exceeded maximum context tokens")
+            error.status_code = 413
+            raise error
+
+    provider.client = FakeClient()
+    provider.model = "command-a-03-2025"
+
+    response = provider.generate("test")
+
+    assert not response.success
+    assert response.error_kind is ErrorKind.PAYLOAD_TOO_LARGE

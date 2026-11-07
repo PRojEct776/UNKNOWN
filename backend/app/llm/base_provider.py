@@ -32,6 +32,7 @@ class ErrorKind(str, Enum):
     FATAL = "fatal"
     INVALID_REQUEST = "invalid_request"
     EMPTY = "empty"
+    PAYLOAD_TOO_LARGE = "payload_too_large"
     UNKNOWN = "unknown"
 
 
@@ -49,6 +50,8 @@ def kind_from_http_status(status: int) -> ErrorKind:
         return ErrorKind.FATAL
     if status == 429:
         return ErrorKind.RATE_LIMIT
+    if status == 413:
+        return ErrorKind.PAYLOAD_TOO_LARGE
     if status in (408, 499) or status >= 500:
         return ErrorKind.TRANSIENT
     if 400 <= status < 500:

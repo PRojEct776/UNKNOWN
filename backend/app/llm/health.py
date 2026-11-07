@@ -123,8 +123,8 @@ class HealthTracker:
             state.last_error = response.error
             state.last_error_kind = kind
 
-            if kind is ErrorKind.INVALID_REQUEST:
-                return  # not the provider's fault
+            if kind in (ErrorKind.INVALID_REQUEST, ErrorKind.PAYLOAD_TOO_LARGE):
+                return  # prompt was oversized or malformed; not the provider's fault
 
             state.consecutive_failures += 1
             cooldown = self._cooldown_for(kind, state.consecutive_failures)
