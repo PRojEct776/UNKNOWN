@@ -109,6 +109,18 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
       }
       await loadDocs();
     } catch (err: unknown) {
+      try {
+        const docs = await fetchDocuments();
+        const uploadedNames = fileArray.map((f) => f.name);
+        const processed = docs.documents.filter((d) => uploadedNames.includes(d.name));
+        if (processed.length > 0) {
+          setUploadStatus(`Ingested ${processed.length} paper(s) successfully.`);
+          await loadDocs();
+          return;
+        }
+      } catch {
+        // ignore check error
+      }
       setErrorMessage(
         err instanceof Error ? err.message : 'Batch upload failed.',
       );

@@ -348,6 +348,17 @@ export const KnowledgeWorkspacePage: React.FC = () => {
 
       await loadDocuments();
     } catch (err: unknown) {
+      try {
+        const docs = await fetchDocuments();
+        const uploadedNames = files.map((f) => f.name);
+        const processed = docs.documents.filter((d) => uploadedNames.includes(d.name));
+        if (processed.length > 0) {
+          await loadDocuments();
+          return;
+        }
+      } catch {
+        // ignore check error
+      }
       alert(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setIsUploading(false);

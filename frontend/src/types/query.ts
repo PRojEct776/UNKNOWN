@@ -1,4 +1,4 @@
-import type { ClaimVerification, ComparisonRow, DebateResult, ResearchGap } from './analysis';
+import type { ClaimVerification, ComparisonRow, ComprehensiveComparison, DebateResult, ResearchGap, ResearchGapsReport } from './analysis';
 import type { ConceptResult } from './concept';
 import type { Evidence, Source } from './evidence';
 import type { ReasoningResult } from './reasoning';
@@ -81,7 +81,9 @@ export interface WorkspaceResult {
   verification: ClaimVerification[];
   comparison: ComparisonRow[];
   comparisonEntities?: string[];
+  comprehensiveComparison?: ComprehensiveComparison;
   researchGap: ResearchGap;
+  researchGapsReport?: ResearchGapsReport;
   debate: DebateResult;
   mindMap: MindMapNode;
   knowledgeDNA: KnowledgeDNA;

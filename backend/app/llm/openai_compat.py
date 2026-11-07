@@ -103,10 +103,18 @@ class OpenAICompatProvider(BaseProvider):
 
         choice = choices[0]
         text = getattr(getattr(choice, "message", None), "content", None)
+        finish = getattr(choice, "finish_reason", None)
+
+        if finish == "length":
+            hint = " (token limit hit; output truncated)"
+            raise LLMError(
+                ErrorKind.PAYLOAD_TOO_LARGE,
+                f"Truncated response because finish_reason=length{hint}.",
+            )
+
         if isinstance(text, str) and text.strip():
             return text
 
-        finish = getattr(choice, "finish_reason", None)
         hint = (
             " (token limit hit; raise MAX_OUTPUT_TOKENS)" if finish == "length" else ""
         )
@@ -124,6 +132,8 @@ class OpenAICompatProvider(BaseProvider):
                 or "request entity too large" in msg
                 or "tokens per minute" in msg
                 or "tpm" in msg
+                or ("rate_limit_exceeded" in msg and "token" in msg)
+                or "finish_reason=length" in msg
             ):
                 return ErrorKind.PAYLOAD_TOO_LARGE
             return kind_from_http_status(status)  # type: ignore
@@ -131,6 +141,7 @@ class OpenAICompatProvider(BaseProvider):
             exc,
             (
                 openai.APIConnectionError,
+                openai.APITimeoutError,
                 httpx.TransportError,
                 TimeoutError,
                 ConnectionError,
@@ -145,6 +156,7 @@ class OpenAICompatProvider(BaseProvider):
             or "tokens per minute" in msg
             or "tpm" in msg
             or "413" in msg
+            or "finish_reason=length" in msg
         ):
             return ErrorKind.PAYLOAD_TOO_LARGE
         return ErrorKind.UNKNOWN

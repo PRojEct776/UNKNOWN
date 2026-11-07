@@ -6,6 +6,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  Maximize2,
   FileText,
   Bookmark,
   AlertCircle,
@@ -34,6 +35,10 @@ export interface MindMapDisplayNode {
   // Measured: chunks containing the label. null when not measured.
   mentionCount: number | null;
   origin?: string;
+  description?: string;
+  parentLabel?: string;
+  significance?: string;
+  type?: string;
   sources: BackendConceptSource[];
   children?: MindMapDisplayNode[];
   isExpanded?: boolean;
@@ -93,24 +98,57 @@ function convertToDisplayTree(
   }
 
   if (root) {
-    function mapNode(node: MindMapNode): MindMapDisplayNode {
-      return {
+    function mapNode(node: MindMapNode, parent?: MindMapNode): MindMapDisplayNode {
+      const displaySources: BackendConceptSource[] = [];
+      const seenSources = new Set<string>();
+
+      if (Array.isArray(node.evidence) && node.evidence.length > 0) {
+        node.evidence.forEach((ev) => {
+          const key = `${node.document || ''}_${node.page || ''}_${ev}`;
+          if (!seenSources.has(key)) {
+            seenSources.add(key);
+            displaySources.push({
+              document: node.document || 'Document',
+              page: node.page !== undefined && node.page !== null && node.page !== '' ? (typeof node.page === 'number' ? node.page : parseInt(String(node.page), 10) || null) : null,
+              chunk_id: node.chunk_id || '',
+              passage: ev,
+            });
+          }
+        });
+      }
+
+      if (displaySources.length === 0 && node.description && node.id !== 'root') {
+        displaySources.push({
+          document: node.document || 'Document evidence',
+          page: node.page !== undefined && node.page !== null && node.page !== '' ? (typeof node.page === 'number' ? node.page : parseInt(String(node.page), 10) || null) : null,
+          chunk_id: node.chunk_id || '',
+          passage: node.description,
+        });
+      }
+
+      const cluster =
+        node.id === 'root' || node.type === 'TOPIC'
+          ? 'Root'
+          : node.type
+          ? String(node.type).charAt(0).toUpperCase() + String(node.type).slice(1).toLowerCase()
+          : 'Concept';
+
+      const dispNode: MindMapDisplayNode = {
         id: node.id || `node-${Math.random().toString(36).substring(7)}`,
         label: node.label,
-        cluster: 'Concepts',
+        cluster: cluster,
         mentionCount: null,
-        sources: node.description
-          ? [
-              {
-                document: 'Mind map description (no source page)',
-                page: null,
-                chunk_id: '',
-                passage: node.description,
-              },
-            ]
-          : [],
-        children: (node.children || []).map(mapNode),
+        origin: node.document || undefined,
+        description: node.description,
+        parentLabel: parent ? parent.label : undefined,
+        significance: node.significance,
+        type: node.type,
+        sources: displaySources,
+        children: [],
       };
+
+      dispNode.children = (node.children || []).map((c) => mapNode(c, node));
+      return dispNode;
     }
     return mapNode(root);
   }
@@ -174,13 +212,11 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
     }
   }, [displayTree, selectedNode]);
 
+  const shouldFitRef = useRef(true);
+
   // Zoom handlers
-  const handleZoomIn = () => setZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2)));
-  const handleZoomOut = () => setZoom((z) => Math.max(0.4, +(z - 0.15).toFixed(2)));
-  const handleResetZoom = () => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  };
+  const handleZoomIn = () => setZoom((z) => Math.min(2.5, +(z * 1.15).toFixed(3)));
+  const handleZoomOut = () => setZoom((z) => Math.max(0.15, +(z * 0.85).toFixed(3)));
 
   // Expand / collapse toggle
   const toggleCollapse = (id: string, e?: React.MouseEvent) => {
@@ -196,7 +232,11 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
     });
   };
 
-  const expandAll = () => setCollapsedIds(new Set());
+  const expandAll = () => {
+    shouldFitRef.current = true;
+    setCollapsedIds(new Set());
+  };
+
   const collapseAll = () => {
     if (!displayTree) return;
     const allIds = new Set<string>();
@@ -207,6 +247,7 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
       }
     }
     collect(displayTree);
+    shouldFitRef.current = true;
     setCollapsedIds(allIds);
   };
 
@@ -356,7 +397,7 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
     parent?: PositionedNode;
   }
 
-  const { positionedNodes, links, totalWidth, totalHeight } = useMemo(() => {
+  const { positionedNodes, links } = useMemo(() => {
     if (!displayTree) {
       return { positionedNodes: [], links: [], totalWidth: 800, totalHeight: 500 };
     }
@@ -416,8 +457,8 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
 
     layout(displayTree, 0);
 
-    const maxX = Math.max(...posNodes.map((p) => p.x), 700) + 260;
-    const maxY = Math.max(currentY + 60, 480);
+    const maxX = Math.max(...posNodes.map((p) => p.x + 190), 800) + 60;
+    const maxY = Math.max(...posNodes.map((p) => p.y + 38), currentY + 40, 520);
 
     return {
       positionedNodes: posNodes,
@@ -426,6 +467,84 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
       totalHeight: maxY,
     };
   }, [displayTree, collapsedIds]);
+
+  // Exact Bounding Box & Fit-to-Screen Calculation
+  const fitGraph = useCallback((nodes?: PositionedNode[]) => {
+    const targetNodes = nodes || positionedNodes;
+    if (!containerRef.current || !targetNodes || targetNodes.length === 0) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const containerW = rect.width || 800;
+    const containerH = rect.height || 520;
+
+    const nodeWidth = 190;
+    const nodeHeight = 38;
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    targetNodes.forEach((p) => {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x + nodeWidth);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y + nodeHeight);
+    });
+
+    const graphW = Math.max(maxX - minX, 100);
+    const graphH = Math.max(maxY - minY, 100);
+
+    const padX = 50;
+    const padY = 40;
+
+    const scaleX = (containerW - padX * 2) / graphW;
+    const scaleY = (containerH - padY * 2) / graphH;
+    const fitScale = Math.max(0.18, Math.min(scaleX, scaleY, 1.05));
+
+    const centerX = minX + graphW / 2;
+    const centerY = minY + graphH / 2;
+
+    const panX = containerW / 2 - centerX * fitScale;
+    const panY = containerH / 2 - centerY * fitScale;
+
+    setZoom(+fitScale.toFixed(3));
+    setPan({ x: Math.round(panX), y: Math.round(panY) });
+  }, [positionedNodes]);
+
+  const handleFitToScreen = useCallback(() => {
+    fitGraph(positionedNodes);
+  }, [fitGraph, positionedNodes]);
+
+  const handleResetZoom = useCallback(() => {
+    fitGraph(positionedNodes);
+  }, [fitGraph, positionedNodes]);
+
+  // Auto-fit when graph loads or when expand/collapse triggers shouldFit
+  useEffect(() => {
+    if (shouldFitRef.current && positionedNodes.length > 0) {
+      shouldFitRef.current = false;
+      const animFrame = requestAnimationFrame(() => {
+        fitGraph(positionedNodes);
+      });
+      return () => cancelAnimationFrame(animFrame);
+    }
+  }, [positionedNodes, fitGraph]);
+
+  // Responsive fit on window resize
+  useEffect(() => {
+    const onResize = () => {
+      fitGraph(positionedNodes);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [fitGraph, positionedNodes]);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.08 : 0.92;
+    setZoom((z) => Math.max(0.18, Math.min(2.5, +(z * factor).toFixed(3))));
+  };
 
   // Loading State
   if (isLoading) {
@@ -490,6 +609,16 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
       className="refire-card p-4 sm:p-5 space-y-4"
       aria-labelledby="mind-map-title"
     >
+      {/* Partial / Limited Mind Map Notice */}
+      {(root?.notice || root?.partial) && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+          <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+          <span>
+            {root.notice || "Limited mind map — generated from available evidence because AI providers were unavailable."}
+          </span>
+        </div>
+      )}
+
       {/* Header Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 pb-3">
         <div className="flex items-center gap-2">
@@ -563,6 +692,15 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
               title="Reset view"
             >
               <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              data-testid="mindmap-fit-screen"
+              type="button"
+              onClick={handleFitToScreen}
+              className="p-1.5 text-[#98a6b0] hover:text-white hover:bg-white/5 border-l border-[#4d728e]/40 transition-colors"
+              title="Fit to screen"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -647,6 +785,7 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
         >
           {/* Subtle background grid */}
           <div
@@ -659,14 +798,10 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
 
           <svg
             ref={svgRef}
-            width={totalWidth}
-            height={totalHeight}
-            className="w-full h-full"
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: 'top left',
-              transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-            }}
+            width="100%"
+            height="100%"
+            className="w-full h-full overflow-visible pointer-events-auto"
+            style={{ width: '100%', height: '100%' }}
           >
             <defs>
               <linearGradient id="link-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -679,14 +814,23 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
               </filter>
             </defs>
 
+            {/* Viewport Transform Layer */}
+            <g
+              className="mindmap-viewport"
+              transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}
+              style={{
+                transformOrigin: '0 0',
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+              }}
+            >
             {/* Connecting Bezier Curves */}
             <g className="mindmap-links">
               {links.map(({ source, target }, idx) => {
-                const sx = source.x + 160;
-                const sy = source.y + 18;
+                const sx = source.x + 190;
+                const sy = source.y + 19;
                 const tx = target.x;
-                const ty = target.y + 18;
-                const dx = (tx - sx) / 2;
+                const ty = target.y + 19;
+                const dx = Math.max(30, (tx - sx) / 2);
                 const pathData = `M ${sx} ${sy} C ${sx + dx} ${sy}, ${tx - dx} ${ty}, ${tx} ${ty}`;
 
                 return (
@@ -720,10 +864,11 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
                     data-testid={`node-${node.id}`}
                   >
                     {/* Node Card Background */}
+                    <title>{node.label}</title>
                     <rect
                       x="0"
                       y="0"
-                      width="160"
+                      width="190"
                       height="38"
                       rx="6"
                       fill={
@@ -777,13 +922,13 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
                       fontFamily="system-ui, -apple-system, sans-serif"
                       className="truncate"
                     >
-                      {node.label.length > 18 ? `${node.label.slice(0, 16)}…` : node.label}
+                      {node.label.length > 24 ? `${node.label.slice(0, 22)}…` : node.label}
                     </text>
 
                     {/* Expand/Collapse Toggle Badge */}
                     {hasChildren && (
                       <g
-                        transform="translate(142, 10)"
+                        transform="translate(168, 10)"
                         onClick={(e) => toggleCollapse(node.id, e)}
                         className="cursor-pointer hover:opacity-80"
                         data-testid={`toggle-${node.id}`}
@@ -804,6 +949,7 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
                   </g>
                 );
               })}
+            </g>
             </g>
           </svg>
         </div>
@@ -831,6 +977,32 @@ export const KnowledgeMindMap: React.FC<KnowledgeMindMapProps> = ({
                 >
                   {selectedNode.label}
                 </h3>
+                {selectedNode.parentLabel && (
+                  <div className="mt-1 flex items-center gap-1.5 text-xs text-[#98a6b0]">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#a7d0d2]">Branch:</span>
+                    <span className="font-medium text-white/90">{selectedNode.parentLabel}</span>
+                  </div>
+                )}
+                {selectedNode.description && (
+                  <div className="mt-2.5 rounded bg-[#141d26]/80 p-2.5 border border-white/8 space-y-1">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#a7d0d2]">
+                      Concept Explanation
+                    </span>
+                    <p className="text-xs text-[#f3faf0]/90 leading-relaxed">
+                      {selectedNode.description}
+                    </p>
+                  </div>
+                )}
+                {selectedNode.significance && (
+                  <div className="mt-2 rounded bg-[#10b981]/10 p-2.5 border border-[#10b981]/30 space-y-1">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#10b981]">
+                      Why It Matters
+                    </span>
+                    <p className="text-xs text-[#f3faf0]/90 leading-relaxed">
+                      {selectedNode.significance}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Measured facts only */}

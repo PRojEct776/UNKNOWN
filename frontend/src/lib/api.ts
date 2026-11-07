@@ -86,6 +86,24 @@ export const REASONING_TIMEOUT_MS: number = (() => {
     : Math.max(DEFAULT_QUERY_TIMEOUT_MS, 120_000);
 })();
 
+/** Dedicated timeout for multi-document research comparisons (120s) without inflating global query timeouts. */
+export const COMPARISON_TIMEOUT_MS: number = (() => {
+  const raw = import.meta.env.VITE_COMPARISON_TIMEOUT_MS as string | undefined;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed >= 500
+    ? parsed
+    : Math.max(DEFAULT_QUERY_TIMEOUT_MS, 120_000);
+})();
+
+/** Dedicated timeout for document uploads and indexing (default 180s = 3 minutes). */
+export const UPLOAD_TIMEOUT_MS: number = (() => {
+  const raw = import.meta.env.VITE_UPLOAD_TIMEOUT_MS as string | undefined;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed >= 500
+    ? parsed
+    : 180_000;
+})();
+
 // ---------------------------------------------------------------------------
 // Shared fetch helper with AbortController & Timeout
 // ---------------------------------------------------------------------------
@@ -282,18 +300,68 @@ export interface BackendComparisonAspect {
   values: BackendComparisonValue[];
 }
 
+export interface BackendContradictionItem {
+  topic: string;
+  claim_a?: string;
+  document_a?: string;
+  claim_b?: string;
+  document_b?: string;
+  explanation?: string;
+  evidence_chunks?: string[];
+}
+
+export interface BackendUniqueContribution {
+  document: string;
+  contribution: string;
+  evidence?: string;
+  chunk_id?: string;
+}
+
+export interface BackendStrengthLimitation {
+  document: string;
+  strengths: string[];
+  limitations: string[];
+}
+
 export interface BackendCompareResponse {
   query: string;
   entities: string[];
   comparison: BackendComparisonAspect[];
   summary: string;
   sources: BackendQuerySource[];
+  similarities?: string[];
+  differences?: string[];
+  contradictions?: BackendContradictionItem[];
+  unique_contributions?: BackendUniqueContribution[];
+  strengths_and_limitations?: BackendStrengthLimitation[];
+  synthesis?: string;
+  comparison_table?: BackendComparisonAspect[];
+  partial?: boolean;
+  notice?: string;
 }
 
 export interface BackendResearchGap {
+  id?: string;
   gap: string;
+  title?: string;
+  category?: string;
+  type?: string;
+  priority?: string;
+  priority_reasoning?: string;
+  confidence?: number;
   rationale: string;
+  current_knowledge?: string;
+  missing_unresolved?: string;
+  limitation_evidence?: string;
+  why_it_matters?: string;
+  potential_direction?: string;
+  relevant_methods?: string[];
+  document?: string;
+  page?: number | string;
+  chunk_id?: string;
   evidence: string[];
+  supporting_papers?: string[];
+  is_shared?: boolean;
   [key: string]: unknown;
 }
 
@@ -304,25 +372,101 @@ export interface BackendResearchGapResponse {
   reported_limitations: string[];
   gaps: BackendResearchGap[];
   sources: BackendQuerySource[];
+  overview?: {
+    total_gaps?: number;
+    high_priority_gaps?: number;
+    medium_priority_gaps?: number;
+    low_priority_gaps?: number;
+    explicit_gaps?: number;
+    derived_gaps?: number;
+    potential_gaps?: number;
+    supporting_papers_count?: number;
+    categories_count?: Record<string, number>;
+  };
+  recommendations?: Array<{
+    id?: string;
+    gap_id?: string;
+    title?: string;
+    research_question?: string;
+    problem_to_investigate?: string;
+    suggested_approach?: string;
+    expected_contribution?: string;
+    supporting_evidence?: string[];
+    is_proposal?: boolean;
+  }>;
+  opportunity_map?: {
+    nodes?: Array<{ id: string; label: string; type: string; category: string; document?: string }>;
+    links?: Array<{ source: string; target: string; relationship: string; evidence?: string }>;
+  };
+  conflicts?: Array<{
+    topic?: string;
+    paper_a?: string;
+    finding_a?: string;
+    paper_b?: string;
+    finding_b?: string;
+    explanation?: string;
+    evidence_chunks?: string[];
+  }>;
+  multi_doc_insights?: {
+    shared_gaps?: string[];
+    unique_limitations?: Record<string, string[]>;
+    recurring_problems?: string[];
+    underexplored_areas?: string[];
+  };
+  partial?: boolean;
+  notice?: string;
 }
 
 export interface BackendDebateArgument {
-  side: 'POSITION_A' | 'POSITION_B' | string;
+  id?: string;
+  side: 'POSITION_A' | 'POSITION_B' | 'PRO' | 'CON' | string;
+  title?: string;
   argument: string;
+  evidence_type?: string;
+  evidence?: string[];
+  confidence?: number;
+  evidence_strength?: string;
+  document?: string;
+  page?: number | string;
+  chunk_id?: string;
+  [key: string]: unknown;
+}
+
+export interface BackendDebateRebuttal {
+  id?: string;
+  side: 'POSITION_A' | 'POSITION_B' | 'PRO' | 'CON' | string;
+  target_argument: string;
+  rebuttal: string;
+  evidence?: string[];
+  confidence?: number;
+  document?: string;
+  page?: number | string;
   chunk_id?: string;
   [key: string]: unknown;
 }
 
 export interface BackendDebateResponse {
   query: string;
+  proposition?: string;
   topic: string;
   position_a: string;
   position_b: string;
+  opening_statements?: {
+    pro?: string;
+    con?: string;
+  };
   arguments: BackendDebateArgument[];
-  rebuttals: unknown[];
+  rebuttals: BackendDebateRebuttal[];
+  agreements?: string[];
+  disagreements?: string[];
+  unresolved_questions?: string[];
+  neutral_assessment?: string;
+  conclusion?: string;
   final_verdict: string;
   verdict_confidence: number;
   sources: BackendQuerySource[];
+  partial?: boolean;
+  notice?: string;
 }
 
 export interface BackendKnowledgeDNASignal {
@@ -341,6 +485,28 @@ export interface BackendKnowledgeDNARelationship {
   [key: string]: unknown;
 }
 
+export interface BackendKnowledgeDNANode {
+  id: string;
+  label: string;
+  category: string;
+  explanation?: string;
+  evidence?: string[];
+  confidence?: number;
+  document?: string;
+  supporting_papers?: string[];
+  page?: number | string | null;
+  chunk_id?: string;
+  is_inferred?: boolean;
+  quantitative_value?: string | null;
+  citations?: Array<{
+    document?: string;
+    page?: number | string | null;
+    chunk_id?: string;
+    passage?: string;
+  }>;
+  [key: string]: unknown;
+}
+
 export interface BackendKnowledgeDNAResponse {
   query: string;
   research_area: string;
@@ -353,20 +519,57 @@ export interface BackendKnowledgeDNAResponse {
   signals: BackendKnowledgeDNASignal[];
   relationships: BackendKnowledgeDNARelationship[];
   sources: BackendQuerySource[];
+
+  // Rich Knowledge DNA Dimensions & Graph
+  nodes?: BackendKnowledgeDNANode[];
+  edges?: BackendKnowledgeDNARelationship[];
+  objectives?: string[];
+  core_concepts?: string[];
+  methodologies?: string[];
+  datasets?: string[];
+  metrics?: string[];
+  results?: string[];
+  contributions?: string[];
+  advantages?: string[];
+  future_directions?: string[];
+  conflicting_findings?: Array<{
+    topic: string;
+    paper_a: string;
+    finding_a: string;
+    paper_b: string;
+    finding_b: string;
+    explanation: string;
+    evidence_chunks?: string[];
+  }>;
+  cross_paper_connections?: BackendKnowledgeDNARelationship[];
+  statistics?: Record<string, number>;
+  partial?: boolean;
+  notice?: string | null;
 }
 
 export interface BackendMindMapNode {
   id: string;
   label: string;
-  type: string;
-  description: string;
+  type?: string;
+  description?: string;
+  evidence?: string[];
+  confidence?: number;
+  document?: string;
+  page?: number | string;
+  chunk_id?: string;
+  parent_id?: string | null;
+  children?: string[];
+  significance?: string;
   [key: string]: unknown;
 }
 
 export interface BackendMindMapEdge {
   source: string;
   target: string;
+  relationship?: string;
   label?: string;
+  evidence?: string;
+  confidence?: number;
   [key: string]: unknown;
 }
 
@@ -376,6 +579,8 @@ export interface BackendKnowledgeMindMapResponse {
   nodes: BackendMindMapNode[];
   edges: BackendMindMapEdge[];
   sources: BackendQuerySource[];
+  partial?: boolean;
+  notice?: string;
 }
 
 // Document management response types
@@ -454,7 +659,34 @@ export async function checkBackendHealth(): Promise<{ status: string; service?: 
  * POST /documents/upload
  * Upload a single research document (PDF, DOCX, or TXT).
  */
-export async function uploadDocument(file: File): Promise<BackendUploadResponse> {
+export interface BackendDocumentStatusResponse {
+  document: string;
+  status: 'processing' | 'ready' | 'stored' | string;
+  total_pages?: number;
+  chunks_count?: number;
+  message: string;
+}
+
+/**
+ * GET /documents/{document_name}/status
+ * Check indexing and processing status for an uploaded document.
+ */
+export async function fetchDocumentStatus(
+  documentName: string,
+  signal?: AbortSignal,
+): Promise<BackendDocumentStatusResponse> {
+  return apiFetch<BackendDocumentStatusResponse>(
+    `/documents/${encodeURIComponent(documentName)}/status`,
+    { method: 'GET' },
+    FAST_TIMEOUT_MS,
+    signal,
+  );
+}
+
+export async function uploadDocument(
+  file: File,
+  signal?: AbortSignal,
+): Promise<BackendUploadResponse> {
   const storedUser = getStoredUser();
   const formData = new FormData();
   formData.append('file', file);
@@ -473,7 +705,8 @@ export async function uploadDocument(file: File): Promise<BackendUploadResponse>
   const response = await fetchWithTimeout(
     `${BACKEND_URL}/documents/upload`,
     { method: 'POST', body: formData, headers: userHeaders },
-    Math.max(DEFAULT_QUERY_TIMEOUT_MS * 2, 60_000),
+    UPLOAD_TIMEOUT_MS,
+    signal,
   );
 
   if (!response.ok) {
@@ -496,6 +729,7 @@ export async function uploadDocument(file: File): Promise<BackendUploadResponse>
  */
 export async function uploadDocumentsBatch(
   files: File[],
+  signal?: AbortSignal,
 ): Promise<BackendBatchUploadResponse> {
   const storedUser = getStoredUser();
   const formData = new FormData();
@@ -517,7 +751,8 @@ export async function uploadDocumentsBatch(
   const response = await fetchWithTimeout(
     `${BACKEND_URL}/documents/upload-batch`,
     { method: 'POST', body: formData, headers: userHeaders },
-    Math.max(DEFAULT_QUERY_TIMEOUT_MS * 2, 60_000),
+    UPLOAD_TIMEOUT_MS,
+    signal,
   );
 
   if (!response.ok) {
@@ -657,7 +892,7 @@ export async function compareBackend(
       method: 'POST',
       body: JSON.stringify({ query, document_names: documentNames ?? null }),
     },
-    DEFAULT_QUERY_TIMEOUT_MS,
+    COMPARISON_TIMEOUT_MS,
     signal,
   );
 }

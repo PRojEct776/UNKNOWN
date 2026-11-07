@@ -40,22 +40,62 @@ class FAISSIndexBuilder:
 
         logger.info(f"Loaded {len(chunks)} chunks.")
 
-        # Extract chunk text
-        texts = [chunk["text"] for chunk in chunks]
+        # Check for reusable cached embeddings from prior build
+        embedding_path = settings.VECTOR_DIR / "chunk_embeddings.npy"
+        metadata_path = settings.VECTOR_DIR / "faiss_metadata.json"
+        cached_lookup: dict[tuple[str, int, str], np.ndarray] = {}
 
-        if not texts:
+        if embedding_path.exists() and metadata_path.exists():
+            try:
+                cached_meta = json.loads(metadata_path.read_text(encoding="utf-8"))
+                cached_matrix = np.load(embedding_path)
+                if len(cached_meta) == len(cached_matrix):
+                    for idx, meta_item in enumerate(cached_meta):
+                        key = (
+                            meta_item.get("document", ""),
+                            meta_item.get("page", 0),
+                            meta_item.get("text", "").strip(),
+                        )
+                        cached_lookup[key] = cached_matrix[idx]
+            except Exception as cache_err:
+                logger.warning("Could not read previous FAISS cache: %s", cache_err)
+
+        if not chunks:
             dimension = 384
             index = faiss.IndexFlatIP(dimension)
             embeddings = np.empty((0, dimension), dtype=np.float32)
         else:
-            logger.info("Generating semantic embeddings...")
-            embeddings = embed_texts(texts)
-            embeddings = np.array(embeddings, dtype=np.float32)
+            needed_texts: list[str] = []
+            needed_indices: list[int] = []
+            assembled_embeddings: list[np.ndarray | None] = [None] * len(chunks)
+
+            for i, chunk in enumerate(chunks):
+                key = (
+                    chunk.get("document", ""),
+                    chunk.get("page", 0),
+                    chunk.get("text", "").strip(),
+                )
+                if key in cached_lookup:
+                    assembled_embeddings[i] = cached_lookup[key]
+                else:
+                    needed_texts.append(chunk["text"])
+                    needed_indices.append(i)
+
+            if needed_texts:
+                logger.info(f"Generating semantic embeddings for {len(needed_texts)} new/updated chunks...")
+                new_embs = embed_texts(needed_texts)
+                for chunk_idx, emb in zip(needed_indices, new_embs):
+                    assembled_embeddings[chunk_idx] = emb
+            else:
+                logger.info(f"Reusing all {len(chunks)} cached chunk embeddings.")
+
+            embeddings = np.array(assembled_embeddings, dtype=np.float32)
             logger.info(f"Embedding matrix shape: {embeddings.shape}")
-            dimension = embeddings.shape[1]
+            dimension = embeddings.shape[1] if embeddings.shape[0] > 0 else 384
             # Inner Product + normalized embeddings = cosine similarity
             index = faiss.IndexFlatIP(dimension)
-            index.add(embeddings)
+            if embeddings.shape[0] > 0:
+                index.add(embeddings)
 
         logger.info(f"Indexed {index.ntotal} vectors.")
 

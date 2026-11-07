@@ -56,6 +56,7 @@ from app.query.query_understanding import (
 from app.query.query_understanding import (
     QueryUnderstanding,
 )
+from app.rag.config import settings
 from app.rag.adaptive_answer import AdaptiveAnswerEngine
 from app.rag.claim_verifier import ClaimVerifier
 from app.rag.concept_discovery import ConceptDiscoveryEngine
@@ -75,7 +76,7 @@ from app.rag.prompt_engine import (
 from app.rag.prompt_engine import (
     QueryType as PromptQueryType,
 )
-from app.rag.research_comparison import ResearchComparisonEngine
+from app.rag.research_comparison import ResearchComparisonEngine, ResearchComparisonReport
 from app.rag.research_gap_finder import ResearchGapFinder
 from app.rag.scoring import calculate_document_iq
 from app.rag.visual_answer import VisualAnswerEngine
@@ -1177,75 +1178,137 @@ class RAGService:
         document_names: list[str] | None = None,
     ):
         """
-
-        Compare research entities using only
-
-        retrieved document evidence.
-
+        Compare research entities using only retrieved document evidence.
+        Guarantees balanced retrieval across multiple documents, evidence
+        grounding, and graceful handling of missing information.
         """
-
         logger.info(f"Running research comparison: {query}")
 
         # ==================================================
+        # 1. RETRIEVE RELEVANT EVIDENCE ACROSS DOCUMENTS
+        # ==================================================
+        # Budgeting for Groq 8k TPM safety (Prompt <= 4500 tokens / ~3000 words total)
+        max_total_words = 2800
+        n_docs = len(document_names) if document_names else 2
+        words_per_doc = max(400, max_total_words // max(n_docs, 2))
 
-        # 1. RETRIEVE RELEVANT EVIDENCE
+        all_results = []
+        seen_chunks = set()
+        seen_texts = set()
+        doc_words: dict[str, int] = {}
+
+        general_k = max(settings.TOP_K_RESULTS, len(document_names or []) * 4, 12)
+        general_results = self._search(query, top_k=general_k, document_names=document_names)
+        for r in general_results:
+            cid = r.get("chunk_id")
+            doc = r.get("document", "")
+            raw_text = r.get("text") or ""
+            clean_t = " ".join(raw_text.split())
+            text_key = clean_t[:150]
+
+            if cid and cid not in seen_chunks and text_key not in seen_texts:
+                current_words = doc_words.get(doc, 0)
+                chunk_words = len(clean_t.split())
+                if current_words + chunk_words <= words_per_doc or current_words == 0:
+                    seen_chunks.add(cid)
+                    seen_texts.add(text_key)
+                    all_results.append(r)
+                    doc_words[doc] = current_words + chunk_words
+
+        # Only top up specifically if any requested document received fewer than 2 chunks
+        if document_names and len(document_names) >= 2:
+            for doc in document_names:
+                if doc not in doc_words or doc_words[doc] < 200:
+                    doc_results = self._search(query, top_k=2, document_names=[doc])
+                    for r in doc_results:
+                        cid = r.get("chunk_id")
+                        raw_text = r.get("text") or ""
+                        clean_t = " ".join(raw_text.split())
+                        text_key = clean_t[:150]
+                        if cid and cid not in seen_chunks and text_key not in seen_texts:
+                            seen_chunks.add(cid)
+                            seen_texts.add(text_key)
+                            all_results.append(r)
+                            doc_words[doc] = doc_words.get(doc, 0) + len(clean_t.split())
+
+        logger.info(f"Retrieved {len(all_results)} chunks for research comparison.")
+
+        if not all_results:
+            return ResearchComparisonReport(
+                query=query,
+                entities=document_names or [],
+                comparison=[],
+                summary="Not found in available sources. Insufficient evidence to perform a comparison for the specified query and documents.",
+                similarities=[],
+                differences=[],
+                contradictions=[],
+                unique_contributions=[],
+                strengths_and_limitations=[],
+                synthesis="Not found in available sources.",
+                sources=[],
+            )
 
         # ==================================================
-
-        results = self._search(query, document_names=document_names)
-
-        logger.info(f"Retrieved {len(results)} chunks " f"for research comparison.")
-
-        # ==================================================
-
         # 2. PREPARE EVIDENCE
+        # ==================================================
+        evidence = self._build_feature_evidence(all_results)
 
         # ==================================================
-
-        evidence = self._build_feature_evidence(results)
-
-        # ==================================================
-
         # 3. BUILD COMPARISON PROMPT
-
         # ==================================================
-
         prompt = self.research_comparison.build_comparison_prompt(
             query=query,
             evidence=evidence,
         )
 
         # ==================================================
-
-        # 4. LLM ANALYSIS
-
+        # 4. LLM ANALYSIS WITH PROVIDER FALLBACK (MAX 2 ATTEMPTS)
         # ==================================================
-
-        response = self.llm.generate_structured(prompt)
+        response = self.llm.generate_structured(
+            prompt,
+            max_attempts=2,
+            time_budget_s=25.0,
+        )
 
         if not response.success:
-
-            error = RuntimeError(response.error or "Research comparison failed.")
-
-            error.error_kind = response.error_kind  # type: ignore
-
-            raise error
+            logger.warning(
+                "All LLM attempts failed or timed out (%s). Falling back to direct evidence-based comparison.",
+                response.error,
+            )
+            return self.research_comparison.build_no_llm_comparison(
+                query=query,
+                evidence=evidence,
+                document_names=document_names,
+            )
 
         # ==================================================
-
-        # 5. PARSE STRUCTURED RESULT
-
+        # 5. PARSE STRUCTURED RESULT WITH TRUNCATION RECOVERY
         # ==================================================
+        try:
+            report = self.research_comparison.parse_response(
+                query=query,
+                response_text=response.answer,
+            )
+        except ValueError as parse_err:
+            logger.warning("Comparison JSON incomplete (%s); falling back to direct evidence-based comparison.", parse_err)
+            return self.research_comparison.build_no_llm_comparison(
+                query=query,
+                evidence=evidence,
+                document_names=document_names,
+            )
 
-        report = self.research_comparison.parse_response(
-            query=query,
-            response_text=response.answer,
-        )
+        # Guarantee source attribution using build_sources if LLM omitted them
+        if not report.sources and all_results:
+            from app.rag.confidence import build_sources
+            report.sources = [s.model_dump() for s in build_sources(all_results)]
 
         logger.info(
             "Research comparison completed: "
             f"{len(report.entities)} entities, "
-            f"{len(report.comparison)} comparison aspects."
+            f"{len(report.comparison)} comparison aspects, "
+            f"{len(report.similarities)} similarities, "
+            f"{len(report.differences)} differences, "
+            f"{len(report.contradictions)} contradictions."
         )
 
         return report
@@ -1263,35 +1326,112 @@ class RAGService:
         position_b: str,
         document_names: list[str] | None = None,
     ):
-        """Generate an evidence-grounded AI debate."""
+        """Generate an evidence-grounded AI debate across single or multiple papers."""
+        target_query = (query or "").strip()
+        logger.info(f"Running AI debate for: {target_query}")
 
-        results = self._search(query, document_names=document_names)
+        max_total_words = 1800
+        n_docs = len(document_names) if document_names else 2
+        words_per_doc = max(350, max_total_words // max(n_docs, 2))
 
-        evidence = self._build_feature_evidence(results)
+        all_results = []
+        seen_chunks = set()
+        seen_texts = set()
+        doc_words: dict[str, int] = {}
+
+        general_k = max(settings.TOP_K_RESULTS, len(document_names or []) * 3, 10)
+        general_results = self._search(target_query, top_k=general_k, document_names=document_names)
+
+        for r in general_results:
+            cid = r.get("chunk_id")
+            doc = r.get("document", "")
+            raw_text = r.get("text") or ""
+            clean_t = " ".join(raw_text.split())
+            text_key = clean_t[:150]
+
+            if cid and cid not in seen_chunks and text_key not in seen_texts:
+                current_words = doc_words.get(doc, 0)
+                chunk_words = len(clean_t.split())
+                if current_words + chunk_words <= words_per_doc or current_words == 0:
+                    seen_chunks.add(cid)
+                    seen_texts.add(text_key)
+                    all_results.append(r)
+                    doc_words[doc] = current_words + chunk_words
+
+        # Ensure balanced representation across requested documents if >= 2 documents
+        if document_names and len(document_names) >= 2:
+            for doc in document_names:
+                if doc not in doc_words or doc_words[doc] < 150:
+                    doc_results = self._search(target_query, top_k=3, document_names=[doc])
+                    for r in doc_results:
+                        cid = r.get("chunk_id")
+                        raw_text = r.get("text") or ""
+                        clean_t = " ".join(raw_text.split())
+                        text_key = clean_t[:150]
+                        if cid and cid not in seen_chunks and text_key not in seen_texts:
+                            seen_chunks.add(cid)
+                            seen_texts.add(text_key)
+                            all_results.append(r)
+                            doc_words[doc] = doc_words.get(doc, 0) + len(clean_t.split())
+
+        if not all_results:
+            return self.debate_engine.build_no_llm_debate(
+                query=target_query,
+                position_a=position_a,
+                position_b=position_b,
+                evidence=[],
+                document_names=document_names,
+            )
+
+        evidence = self._build_feature_evidence(all_results)
 
         prompt = self.debate_engine.build_debate_prompt(
-            query=query,
+            query=target_query,
             position_a=position_a,
             position_b=position_b,
             evidence=evidence,
         )
 
-        response = self.llm.generate_structured(prompt)
+        response = self.llm.generate_structured(
+            prompt,
+            max_attempts=2,
+            time_budget_s=25.0,
+        )
 
         if not response.success:
+            logger.warning(
+                "All LLM attempts failed or timed out (%s). Falling back to direct evidence-based Debate.",
+                response.error,
+            )
+            return self.debate_engine.build_no_llm_debate(
+                query=target_query,
+                position_a=position_a,
+                position_b=position_b,
+                evidence=evidence,
+                document_names=document_names,
+            )
 
-            error = RuntimeError(response.error or "AI debate generation failed.")
+        try:
+            report = self.debate_engine.parse_response(
+                query=target_query,
+                position_a=position_a,
+                position_b=position_b,
+                response_text=response.answer,
+            )
+        except Exception as parse_err:
+            logger.warning(
+                "AI debate parsing failed (%s). Falling back to direct evidence-based Debate.",
+                parse_err,
+            )
+            return self.debate_engine.build_no_llm_debate(
+                query=target_query,
+                position_a=position_a,
+                position_b=position_b,
+                evidence=evidence,
+                document_names=document_names,
+            )
 
-            error.error_kind = response.error_kind  # type: ignore
-
-            raise error
-
-        return self.debate_engine.parse_response(
-            query=query,
-            position_a=position_a,
-            position_b=position_b,
-            response_text=response.answer,
-        )
+        return report
 
     # ======================================================
 
@@ -1301,34 +1441,108 @@ class RAGService:
 
     def generate_knowledge_dna(
         self,
-        query: str,
+        query: str = "",
         document_names: list[str] | None = None,
+        topic: str | None = None,
     ):
-        """Generate evidence-grounded Knowledge DNA."""
+        """Generate evidence-grounded Knowledge DNA across 10 research dimensions."""
+        target_query = (query or topic or "").strip()
+        logger.info(f"Generating Knowledge DNA for: {target_query}")
 
-        results = self._search(query, document_names=document_names)
+        max_total_words = 1800
+        n_docs = len(document_names) if document_names else 2
+        words_per_doc = max(350, max_total_words // max(n_docs, 2))
 
-        evidence = self._build_feature_evidence(results)
+        all_results = []
+        seen_chunks = set()
+        seen_texts = set()
+        doc_words: dict[str, int] = {}
+
+        general_k = max(settings.TOP_K_RESULTS, len(document_names or []) * 3, 10)
+        general_results = self._search(target_query, top_k=general_k, document_names=document_names)
+
+        for r in general_results:
+            cid = r.get("chunk_id")
+            doc = r.get("document", "")
+            raw_text = r.get("text") or ""
+            clean_t = " ".join(raw_text.split())
+            text_key = clean_t[:150]
+
+            if cid and cid not in seen_chunks and text_key not in seen_texts:
+                current_words = doc_words.get(doc, 0)
+                chunk_words = len(clean_t.split())
+                if current_words + chunk_words <= words_per_doc or current_words == 0:
+                    seen_chunks.add(cid)
+                    seen_texts.add(text_key)
+                    all_results.append(r)
+                    doc_words[doc] = current_words + chunk_words
+
+        # Ensure balanced representation across requested documents if >= 2 documents
+        if document_names and len(document_names) >= 2:
+            for doc in document_names:
+                if doc not in doc_words or doc_words[doc] < 150:
+                    doc_results = self._search(target_query, top_k=2, document_names=[doc])
+                    for r in doc_results:
+                        cid = r.get("chunk_id")
+                        raw_text = r.get("text") or ""
+                        clean_t = " ".join(raw_text.split())
+                        text_key = clean_t[:150]
+                        if cid and cid not in seen_chunks and text_key not in seen_texts:
+                            seen_chunks.add(cid)
+                            seen_texts.add(text_key)
+                            all_results.append(r)
+                            doc_words[doc] = doc_words.get(doc, 0) + len(clean_t.split())
+
+        if not all_results:
+            from app.rag.knowledge_dna import KnowledgeDNAReport
+            return KnowledgeDNAReport(
+                query=target_query,
+                research_area="Insufficient evidence",
+                partial=False,
+                notice="Not found in available sources. Insufficient evidence to extract Knowledge DNA for the specified query and documents.",
+            )
+
+        evidence = self._build_feature_evidence(all_results)
 
         prompt = self.knowledge_dna.build_dna_prompt(
-            query=query,
+            query=target_query,
             evidence=evidence,
         )
 
-        response = self.llm.generate_structured(prompt)
+        response = self.llm.generate_structured(
+            prompt,
+            max_attempts=2,
+            time_budget_s=25.0,
+        )
 
         if not response.success:
+            logger.warning(
+                "All LLM attempts failed or timed out (%s). Falling back to direct evidence-based Knowledge DNA.",
+                response.error,
+            )
+            return self.knowledge_dna.build_no_llm_dna(
+                query=target_query,
+                evidence=evidence,
+                document_names=document_names,
+            )
 
-            error = RuntimeError(response.error or "Knowledge DNA generation failed.")
+        try:
+            report = self.knowledge_dna.parse_response(
+                query=target_query,
+                response_text=response.answer,
+            )
+        except Exception as parse_err:
+            logger.warning(
+                "Knowledge DNA parsing failed (%s). Falling back to direct evidence-based Knowledge DNA.",
+                parse_err,
+            )
+            return self.knowledge_dna.build_no_llm_dna(
+                query=target_query,
+                evidence=evidence,
+                document_names=document_names,
+            )
 
-            error.error_kind = response.error_kind  # type: ignore
-
-            raise error
-
-        return self.knowledge_dna.parse_response(
-            query=query,
-            response_text=response.answer,
-        )
+        return report
 
     # ======================================================
 
@@ -1338,36 +1552,115 @@ class RAGService:
 
     def generate_knowledge_mind_map(
         self,
-        query: str,
+        query: str = "",
         document_names: list[str] | None = None,
+        topic: str | None = None,
     ):
         """Generate an evidence-grounded knowledge mind map."""
+        target_query = (query or topic or "").strip()
+        logger.info(f"Generating knowledge mind map for: {target_query}")
 
-        results = self._search(query, document_names=document_names)
+        max_total_words = 1600
+        n_docs = len(document_names) if document_names else 2
+        words_per_doc = max(350, max_total_words // max(n_docs, 2))
 
-        evidence = self._build_feature_evidence(results)
+        all_results = []
+        seen_chunks = set()
+        seen_texts = set()
+        doc_words: dict[str, int] = {}
+
+        general_k = max(settings.TOP_K_RESULTS, len(document_names or []) * 3, 10)
+        general_results = self._search(target_query, top_k=general_k, document_names=document_names)
+
+        for r in general_results:
+            cid = r.get("chunk_id")
+            doc = r.get("document", "")
+            raw_text = r.get("text") or ""
+            clean_t = " ".join(raw_text.split())
+            text_key = clean_t[:150]
+
+            if cid and cid not in seen_chunks and text_key not in seen_texts:
+                current_words = doc_words.get(doc, 0)
+                chunk_words = len(clean_t.split())
+                if current_words + chunk_words <= words_per_doc or current_words == 0:
+                    seen_chunks.add(cid)
+                    seen_texts.add(text_key)
+                    all_results.append(r)
+                    doc_words[doc] = current_words + chunk_words
+
+        # Ensure balanced representation across requested documents if >= 2 documents
+        if document_names and len(document_names) >= 2:
+            for doc in document_names:
+                if doc not in doc_words or doc_words[doc] < 150:
+                    doc_results = self._search(target_query, top_k=2, document_names=[doc])
+                    for r in doc_results:
+                        cid = r.get("chunk_id")
+                        raw_text = r.get("text") or ""
+                        clean_t = " ".join(raw_text.split())
+                        text_key = clean_t[:150]
+                        if cid and cid not in seen_chunks and text_key not in seen_texts:
+                            seen_chunks.add(cid)
+                            seen_texts.add(text_key)
+                            all_results.append(r)
+                            doc_words[doc] = doc_words.get(doc, 0) + len(clean_t.split())
+
+        if not all_results:
+            from app.rag.knowledge_mind_map import KnowledgeMindMap
+            return KnowledgeMindMap(
+                query=query,
+                research_area="Insufficient evidence",
+                nodes=[],
+                edges=[],
+                sources=[],
+                partial=False,
+                notice="Not found in available sources. Insufficient evidence to construct a mind map for the specified query and documents.",
+            )
+
+        evidence = self._build_feature_evidence(all_results)
 
         prompt = self.knowledge_mind_map.build_mind_map_prompt(
-            query=query,
+            query=target_query,
             evidence=evidence,
         )
 
-        response = self.llm.generate_structured(prompt)
+        response = self.llm.generate_structured(
+            prompt,
+            max_attempts=2,
+            time_budget_s=25.0,
+        )
 
         if not response.success:
-
-            error = RuntimeError(
-                response.error or "Knowledge mind map generation failed."
+            logger.warning(
+                "All LLM attempts failed or timed out (%s). Falling back to direct evidence-based mind map.",
+                response.error,
+            )
+            return self.knowledge_mind_map.build_no_llm_mind_map(
+                query=target_query,
+                evidence=evidence,
+                document_names=document_names,
             )
 
-            error.error_kind = response.error_kind  # type: ignore
+        try:
+            report = self.knowledge_mind_map.parse_response(
+                query=target_query,
+                response_text=response.answer,
+            )
+        except ValueError as parse_err:
+            logger.warning(
+                "Knowledge mind map parsing failed (%s). Falling back to direct evidence-based mind map.",
+                parse_err,
+            )
+            return self.knowledge_mind_map.build_no_llm_mind_map(
+                query=target_query,
+                evidence=evidence,
+                document_names=document_names,
+            )
 
-            raise error
+        if not report.sources and report.nodes and all_results:
+            from app.rag.confidence import build_sources
+            report.sources = [s.model_dump() for s in build_sources(all_results)]
 
-        return self.knowledge_mind_map.parse_response(
-            query=query,
-            response_text=response.answer,
-        )
+        return report
 
     # ======================================================
 
@@ -1380,31 +1673,102 @@ class RAGService:
         query: str,
         document_names: list[str] | None = None,
     ):
-        """Identify evidence-grounded research gaps."""
+        """Identify evidence-grounded research gaps across single or multiple papers."""
+        target_query = (query or "").strip()
+        logger.info(f"Finding research gaps for: {target_query}")
 
-        results = self._search(query, document_names=document_names)
+        max_total_words = 1800
+        n_docs = len(document_names) if document_names else 2
+        words_per_doc = max(350, max_total_words // max(n_docs, 2))
 
-        evidence = self._build_feature_evidence(results)
+        all_results = []
+        seen_chunks = set()
+        seen_texts = set()
+        doc_words: dict[str, int] = {}
+
+        general_k = max(settings.TOP_K_RESULTS, len(document_names or []) * 3, 10)
+        general_results = self._search(target_query, top_k=general_k, document_names=document_names)
+
+        for r in general_results:
+            cid = r.get("chunk_id")
+            doc = r.get("document", "")
+            raw_text = r.get("text") or ""
+            clean_t = " ".join(raw_text.split())
+            text_key = clean_t[:150]
+
+            if cid and cid not in seen_chunks and text_key not in seen_texts:
+                current_words = doc_words.get(doc, 0)
+                chunk_words = len(clean_t.split())
+                if current_words + chunk_words <= words_per_doc or current_words == 0:
+                    seen_chunks.add(cid)
+                    seen_texts.add(text_key)
+                    all_results.append(r)
+                    doc_words[doc] = current_words + chunk_words
+
+        # Ensure balanced representation across requested documents if >= 2 documents
+        if document_names and len(document_names) >= 2:
+            for doc in document_names:
+                if doc not in doc_words or doc_words[doc] < 150:
+                    doc_results = self._search(target_query, top_k=3, document_names=[doc])
+                    for r in doc_results:
+                        cid = r.get("chunk_id")
+                        raw_text = r.get("text") or ""
+                        clean_t = " ".join(raw_text.split())
+                        text_key = clean_t[:150]
+                        if cid and cid not in seen_chunks and text_key not in seen_texts:
+                            seen_chunks.add(cid)
+                            seen_texts.add(text_key)
+                            all_results.append(r)
+                            doc_words[doc] = doc_words.get(doc, 0) + len(clean_t.split())
+
+        if not all_results:
+            return self.research_gap_finder.build_no_llm_gaps(
+                query=target_query,
+                evidence=[],
+                document_names=document_names,
+            )
+
+        evidence = self._build_feature_evidence(all_results)
 
         prompt = self.research_gap_finder.build_gap_prompt(
-            query=query,
+            query=target_query,
             evidence=evidence,
         )
 
-        response = self.llm.generate_structured(prompt)
+        response = self.llm.generate_structured(
+            prompt,
+            max_attempts=2,
+            time_budget_s=25.0,
+        )
 
         if not response.success:
+            logger.warning(
+                "All LLM attempts failed or timed out (%s). Falling back to direct evidence-based Research Gaps.",
+                response.error,
+            )
+            return self.research_gap_finder.build_no_llm_gaps(
+                query=target_query,
+                evidence=evidence,
+                document_names=document_names,
+            )
 
-            error = RuntimeError(response.error or "Research gap detection failed.")
+        try:
+            report = self.research_gap_finder.parse_response(
+                query=target_query,
+                response_text=response.answer,
+            )
+        except Exception as parse_err:
+            logger.warning(
+                "Research gap parsing failed (%s). Falling back to direct evidence-based Research Gaps.",
+                parse_err,
+            )
+            return self.research_gap_finder.build_no_llm_gaps(
+                query=target_query,
+                evidence=evidence,
+                document_names=document_names,
+            )
 
-            error.error_kind = response.error_kind  # type: ignore
-
-            raise error
-
-        return self.research_gap_finder.parse_response(
-            query=query,
-            response_text=response.answer,
-        )
+        return report
 
     # ======================================================
 

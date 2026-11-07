@@ -1,56 +1,56 @@
 {
-    "document": "UNKNOWN_RAG_Test_Document.pdf",
-    "title": "UNKNOWN_RAG_Test_Document",
+    "document": "acsnano.2c06748.pdf",
+    "title": "acsnano.2c06748",
     "user_id": "default_user",
     "is_test_document": false,
     "document_type": "pdf",
-    "document_hash": "eadce46746d922072212d42e9e24d165407ae13a340ac25ad44861f83a3b043e",
-    "pages": 2,
-    "chunks": 2,
-    "text_length": 527,
-    "estimated_read_time": 2.63,
+    "document_hash": "6e045eedb14e0780db7be33cb05544995f924bd905c6d04c4ed6ec0c4722bb48",
+    "pages": 21,
+    "chunks": 35,
+    "text_length": 12213,
+    "estimated_read_time": 61.06,
     "embedding_status": true,
     "embedding_status_detail": "verified",
-    "embedding_expected_chunks": 2,
-    "embedding_verified_chunks": 2,
+    "embedding_expected_chunks": 35,
+    "embedding_verified_chunks": 35,
     "ocr_required": false,
     "ocr_quality": 1.0,
     "ocr_basis": "page_text_coverage",
     "metadata_completeness": 1.0,
     "document_iq": {
-        "document": "UNKNOWN_RAG_Test_Document.pdf",
-        "title": "UNKNOWN_RAG_Test_Document",
-        "iq_score": 67.63,
+        "document": "acsnano.2c06748.pdf",
+        "title": "acsnano.2c06748",
+        "iq_score": 96.67,
         "max_score": 100,
-        "grade": "C",
-        "health": "Fair",
+        "grade": "A+",
+        "health": "Excellent",
         "metrics": {
-            "extraction_score": 2.63,
-            "chunk_score": 10.0,
+            "extraction_score": 25.0,
+            "chunk_score": 16.67,
             "embedding_score": 20,
             "ocr_score": 20,
             "metadata_score": 15.0
         },
         "components": {
             "extraction": {
-                "score": 2.63,
+                "score": 25.0,
                 "max_score": 25,
                 "basis": "measured",
                 "how_calculated": "Words extracted ÷ 5,000, capped at 1, × 25.",
                 "inputs": {
-                    "words": 527
+                    "words": 12213
                 },
                 "note": "Measures how much text was extracted (volume). It does not judge whether the text is correct, and short documents score lower regardless of quality."
             },
             "chunk_coverage": {
-                "score": 10.0,
+                "score": 16.67,
                 "max_score": 20,
                 "basis": "measured",
                 "how_calculated": "Chunks per page ÷ 2 (target density), capped at 1, × 20.",
                 "inputs": {
-                    "pages": 2,
-                    "chunks": 2,
-                    "chunks_per_page": 1.0
+                    "pages": 21,
+                    "chunks": 35,
+                    "chunks_per_page": 1.67
                 },
                 "note": null
             },
@@ -101,10 +101,10 @@
         },
         "points_without_direct_measurement": 0.0,
         "pipeline": {
-            "pages": 2,
-            "chunks": 2,
-            "text_length": 527,
-            "chunk_density": 1.0,
+            "pages": 21,
+            "chunks": 35,
+            "text_length": 12213,
+            "chunk_density": 1.67,
             "embedding_status": true,
             "embedding_status_detail": "verified",
             "metadata_completeness": 1.0,

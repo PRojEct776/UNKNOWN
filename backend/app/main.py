@@ -8,7 +8,9 @@ import json
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Request, Form, Header
+from fastapi import FastAPI, HTTPException, File, UploadFile, Request, Form, Header, BackgroundTasks
+import asyncio
+import threading
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -415,9 +417,106 @@ def download_document(
     )
 
 
+# Thread-safe synchronization and active upload tracking
+_upload_lock = threading.Lock()
+_upload_in_progress: dict[str, asyncio.Event] = {}
+_upload_results: dict[str, dict] = {}
+_upload_errors: dict[str, Exception] = {}
+
+
+def _cleanup_failed_upload(file_name: str) -> None:
+    """Clean up any partial files created on disk during a failed upload attempt."""
+    safe_name = Path(file_name).name
+    stem = Path(safe_name).stem
+    p_path = settings.PAPERS_DIR / safe_name
+    if p_path.exists():
+        try:
+            p_path.unlink()
+        except Exception:
+            pass
+    j_path = settings.JSON_DIR / f"{stem}.json"
+    if j_path.exists():
+        try:
+            j_path.unlink()
+        except Exception:
+            pass
+    m_path = settings.METADATA_DIR / f"{stem}_metadata.json"
+    if m_path.exists():
+        try:
+            m_path.unlink()
+        except Exception:
+            pass
+
+
+def _generate_overview_in_background(file_name: str) -> None:
+    """Background task to pre-generate and cache document overview without blocking upload response."""
+    try:
+        from app.services.overview_service import generate_document_overview
+
+        def _llm_fn_upload(prompt: str, temperature: float = 0.0) -> str:
+            resp = rag_service.llm.generate_grounded(prompt) if temperature == 0.0 else rag_service.llm.generate(prompt)
+            if not resp.success:
+                raise RuntimeError(resp.error or "LLM failed")
+            return resp.answer
+
+        generate_document_overview(
+            document_name=file_name,
+            llm_fn=_llm_fn_upload,
+            retriever=rag_service.retriever,
+        )
+        logger.info("Background overview generated successfully for %s", file_name)
+    except Exception as o_err:
+        logger.warning("Background overview generation warning for %s: %s", file_name, o_err)
+
+
+@app.get("/documents/{document_name}/status")
+def get_document_status(document_name: str):
+    """Check ingestion, indexing, and processing status for a document."""
+    safe_name = Path(document_name).name
+    with _upload_lock:
+        for ch, ev in _upload_in_progress.items():
+            if not ev.is_set():
+                p_path = settings.PAPERS_DIR / safe_name
+                if p_path.exists():
+                    return {
+                        "document": safe_name,
+                        "status": "processing",
+                        "total_pages": 0,
+                        "chunks_count": 0,
+                        "message": f"Document '{safe_name}' is currently being ingested and indexed.",
+                    }
+
+    paper_path = settings.PAPERS_DIR / safe_name
+    if not paper_path.exists():
+        raise HTTPException(status_code=404, detail=f"Document '{safe_name}' not found")
+
+    try:
+        from app.services.document_service import count_document_chunks, load_document_json
+        doc_data = load_document_json(safe_name)
+        chunks = count_document_chunks(safe_name)
+        return {
+            "document": safe_name,
+            "status": "ready" if chunks > 0 else "stored",
+            "total_pages": doc_data.get("total_pages", 1),
+            "chunks_count": chunks,
+            "message": f"Document '{safe_name}' is ready and indexed for retrieval.",
+        }
+    except Exception as exc:
+        return {
+            "document": safe_name,
+            "status": "stored",
+            "total_pages": 1,
+            "chunks_count": 0,
+            "message": f"Document '{safe_name}' is stored but not fully indexed: {exc}",
+        }
+
+
 @app.post("/documents/upload")
 @app.post("/upload", include_in_schema=False)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+):
     """Upload a research document (.pdf, .docx, .txt) and index it."""
     from app.rag.document_loader import DocumentLoader
     from app.rag.utils import list_supported_documents
@@ -443,33 +542,82 @@ async def upload_document(file: UploadFile = File(...)):
             detail=f"Collection limit of {settings.MAX_COLLECTION_PAPERS} papers reached. Please delete a paper before uploading another.",
         )
 
-    try:
-        content = await file.read()
-        if not content:
-            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-        if len(content) > settings.MAX_FILE_SIZE_BYTES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File exceeds maximum allowed size of {settings.MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB.",
-            )
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(content) > settings.MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File exceeds maximum allowed size of {settings.MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB.",
+        )
 
-        import hashlib
-        content_hash = hashlib.sha256(content).hexdigest()
-        if settings.METADATA_DIR.exists():
-            for meta_p in settings.METADATA_DIR.glob("*_metadata.json"):
-                try:
-                    with open(meta_p, "r", encoding="utf-8") as mf:
-                        m_data = json.load(mf)
-                        if m_data.get("document_hash") == content_hash:
+    import hashlib
+    content_hash = hashlib.sha256(content).hexdigest()
+
+    # Deduplicate concurrent identical uploads: wait for first in-flight process if already running
+    wait_event = None
+    with _upload_lock:
+        if content_hash in _upload_in_progress:
+            wait_event = _upload_in_progress[content_hash]
+        else:
+            _upload_in_progress[content_hash] = asyncio.Event()
+
+    if wait_event is not None:
+        logger.info("Upload for %s is already in progress, awaiting result...", file_name)
+        await wait_event.wait()
+        if content_hash in _upload_results:
+            return _upload_results[content_hash]
+        if content_hash in _upload_errors:
+            err = _upload_errors[content_hash]
+            if isinstance(err, HTTPException):
+                raise err
+            raise HTTPException(status_code=500, detail=f"Failed to process document: {err}")
+
+    # Check duplicate or retry against existing indexed metadata
+    if settings.METADATA_DIR.exists():
+        for meta_p in settings.METADATA_DIR.glob("*_metadata.json"):
+            try:
+                with open(meta_p, "r", encoding="utf-8") as mf:
+                    m_data = json.load(mf)
+                    if m_data.get("document_hash") == content_hash:
+                        existing_doc_name = m_data.get("document") or file_name
+                        # If same filename and file exists, it's a retry of already indexed document!
+                        if existing_doc_name == file_name and (settings.PAPERS_DIR / file_name).exists():
+                            try:
+                                from app.services.document_service import load_document_json, count_document_chunks
+                                doc_json = load_document_json(file_name)
+                                doc_chunks = count_document_chunks(file_name)
+                                res = {
+                                    "status": "success",
+                                    "filename": file_name,
+                                    "total_pages": doc_json.get("total_pages", 1),
+                                    "total_words": doc_json.get("total_words", 0),
+                                    "chunks_count": doc_chunks,
+                                    "message": f"Successfully ingested and indexed {file_name} into retrieval pipeline.",
+                                }
+                                with _upload_lock:
+                                    _upload_results[content_hash] = res
+                                    ev = _upload_in_progress.pop(content_hash, None)
+                                    if ev:
+                                        ev.set()
+                                return res
+                            except Exception:
+                                pass
+                        else:
+                            with _upload_lock:
+                                ev = _upload_in_progress.pop(content_hash, None)
+                                if ev:
+                                    ev.set()
                             raise HTTPException(
                                 status_code=400,
-                                detail=f"Duplicate document detected: content matches existing document '{m_data.get('document')}'",
+                                detail=f"Duplicate document detected: content matches existing document '{existing_doc_name}'",
                             )
-                except HTTPException:
-                    raise
-                except Exception:
-                    pass
+            except HTTPException:
+                raise
+            except Exception:
+                pass
 
+    try:
         with open(save_path, "wb") as f:
             f.write(content)
 
@@ -500,27 +648,12 @@ async def upload_document(file: UploadFile = File(...)):
 
         rag_service.reload_indexes()
 
-        # Generate document overview on upload and cache by document hash
-        try:
-            from app.services.overview_service import generate_document_overview
-
-            def _llm_fn_upload(prompt: str, temperature: float = 0.0) -> str:
-                resp = rag_service.llm.generate_grounded(prompt) if temperature == 0.0 else rag_service.llm.generate(prompt)
-                if not resp.success:
-                    raise RuntimeError(resp.error or "LLM failed")
-                return resp.answer
-
-            generate_document_overview(
-                document_name=file_name,
-                llm_fn=_llm_fn_upload,
-                retriever=rag_service.retriever,
-            )
-        except Exception as o_err:
-            logger.warning("Overview generation on upload warning: %s", o_err)
+        # Non-blocking background overview generation
+        background_tasks.add_task(_generate_overview_in_background, file_name)
 
         doc_chunks = sum(1 for c in all_chunks if c.get("document") == file_name)
 
-        return {
+        success_resp = {
             "status": "success",
             "filename": file_name,
             "total_pages": doc_json.get("total_pages", 1),
@@ -528,20 +661,44 @@ async def upload_document(file: UploadFile = File(...)):
             "chunks_count": doc_chunks or len(all_chunks),
             "message": f"Successfully ingested and indexed {file_name} into retrieval pipeline.",
         }
-    except HTTPException:
+
+        with _upload_lock:
+            _upload_results[content_hash] = success_resp
+            ev = _upload_in_progress.pop(content_hash, None)
+            if ev:
+                ev.set()
+
+        return success_resp
+    except HTTPException as he:
+        _cleanup_failed_upload(file_name)
+        with _upload_lock:
+            _upload_errors[content_hash] = he
+            ev = _upload_in_progress.pop(content_hash, None)
+            if ev:
+                ev.set()
         raise
     except Exception as exc:
         logger.exception("Document upload processing failed.")
+        _cleanup_failed_upload(file_name)
+
         from app.rag.exceptions import EmptyDocumentError
+        err_to_raise: HTTPException
         if isinstance(exc, EmptyDocumentError):
-            raise HTTPException(
+            err_to_raise = HTTPException(
                 status_code=400,
                 detail=f"Uploaded file '{file_name}' contains no readable or extractable text. If this is a PDF, ensure it contains clear readable text or scanned pages.",
-            ) from exc
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to process document: {exc}",
-        ) from exc
+            )
+        else:
+            err_to_raise = HTTPException(
+                status_code=500,
+                detail=f"Failed to process document: {exc}",
+            )
+        with _upload_lock:
+            _upload_errors[content_hash] = err_to_raise
+            ev = _upload_in_progress.pop(content_hash, None)
+            if ev:
+                ev.set()
+        raise err_to_raise from exc
 
 
 @app.post("/documents/upload-batch")
@@ -1115,22 +1272,43 @@ def contradictions(request: ContradictionRequest):
     response_model=ResearchComparisonResponse,
 )
 def compare(request: ResearchComparisonRequest):
-    if request.document_names and len(request.document_names) > 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Maximum 10 documents allowed for comparison or filtering.",
-        )
+    if request.document_names is not None:
+        if len(request.document_names) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No documents selected for comparison.",
+            )
+        if len(request.document_names) == 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Comparison requires at least two documents.",
+            )
+        if len(request.document_names) > 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum 10 documents allowed for comparison or filtering.",
+            )
     start_time = time.perf_counter()
 
     try:
         report = rag_service.compare_research(request.query, document_names=request.document_names)
 
+        comparison_dump = [aspect.model_dump() for aspect in report.comparison]
         return ResearchComparisonResponse(
             query=report.query,
             entities=report.entities,
-            comparison=[aspect.model_dump() for aspect in report.comparison],  # type: ignore
+            comparison=comparison_dump,
             summary=report.summary,
             sources=report.sources,
+            similarities=report.similarities,
+            differences=report.differences,
+            contradictions=[c.model_dump() for c in report.contradictions],
+            unique_contributions=[u.model_dump() for u in report.unique_contributions],
+            strengths_and_limitations=[s.model_dump() for s in report.strengths_and_limitations],
+            synthesis=report.synthesis,
+            comparison_table=comparison_dump,
+            partial=getattr(report, "partial", False),
+            notice=getattr(report, "notice", None),
         )
 
     except Exception as error:
@@ -1167,18 +1345,36 @@ def compare(request: ResearchComparisonRequest):
 def research_gaps(request: ResearchGapRequest):
     start_time = time.perf_counter()
 
+    if not request.query or not request.query.strip():
+        raise HTTPException(status_code=400, detail="Query must not be empty.")
+
+    if request.document_names is not None and len(request.document_names) == 0:
+        raise HTTPException(status_code=400, detail="Document list must not be empty when provided.")
+
     try:
         report = rag_service.find_research_gaps(request.query, document_names=request.document_names)  # type: ignore
+
+        overview_dict = report.overview.model_dump() if hasattr(report.overview, "model_dump") else (report.overview if isinstance(report.overview, dict) else {})
+        opp_map_dict = report.opportunity_map.model_dump() if hasattr(report.opportunity_map, "model_dump") else (report.opportunity_map if isinstance(report.opportunity_map, dict) else {})
 
         return ResearchGapResponse(
             query=report.query,
             research_area=report.research_area,
             existing_findings=report.existing_findings,
             reported_limitations=report.reported_limitations,
-            gaps=[gap.model_dump() for gap in report.gaps],
+            gaps=[gap.model_dump() if hasattr(gap, "model_dump") else gap for gap in report.gaps],
             sources=report.sources,
+            overview=overview_dict,
+            recommendations=[r.model_dump() if hasattr(r, "model_dump") else r for r in report.recommendations],
+            opportunity_map=opp_map_dict,
+            conflicts=[c.model_dump() if hasattr(c, "model_dump") else c for c in report.conflicts],
+            multi_doc_insights=report.multi_doc_insights if isinstance(report.multi_doc_insights, dict) else {},
+            partial=getattr(report, "partial", False),
+            notice=getattr(report, "notice", None),
         )
 
+    except HTTPException:
+        raise
     except Exception as error:
         logger.exception("Research gap detection failed.")
 
@@ -1210,7 +1406,7 @@ def research_gaps(request: ResearchGapRequest):
 
         if isinstance(error, ValueError):
             raise HTTPException(
-                status_code=502,
+                status_code=400,
                 detail=str(error),
             ) from error
 
@@ -1239,16 +1435,31 @@ def debate(request: DebateRequest):
             document_names=request.document_names,
         )
 
+        openings = (
+            report.opening_statements.model_dump()
+            if hasattr(report.opening_statements, "model_dump")
+            else (report.opening_statements if isinstance(report.opening_statements, dict) else {})
+        )
+
         return DebateResponse(
             query=report.query,
+            proposition=getattr(report, "proposition", report.query),
             topic=report.topic,
             position_a=report.position_a,
             position_b=report.position_b,
-            arguments=[argument.model_dump() for argument in report.arguments],
-            rebuttals=[rebuttal.model_dump() for rebuttal in report.rebuttals],
+            opening_statements=openings,
+            arguments=[argument.model_dump() if hasattr(argument, "model_dump") else argument for argument in report.arguments],
+            rebuttals=[rebuttal.model_dump() if hasattr(rebuttal, "model_dump") else rebuttal for rebuttal in report.rebuttals],
+            agreements=getattr(report, "agreements", []),
+            disagreements=getattr(report, "disagreements", []),
+            unresolved_questions=getattr(report, "unresolved_questions", []),
+            neutral_assessment=getattr(report, "neutral_assessment", report.final_verdict),
+            conclusion=getattr(report, "conclusion", report.final_verdict),
             final_verdict=report.final_verdict,
             verdict_confidence=report.verdict_confidence,
             sources=report.sources,
+            partial=getattr(report, "partial", False),
+            notice=getattr(report, "notice", None),
         )
 
     except Exception as error:
@@ -1329,6 +1540,22 @@ def knowledge_dna(request: KnowledgeDNARequest):
                 relationship.model_dump() for relationship in report.relationships  # type: ignore
             ],
             sources=report.sources,
+            nodes=[node.model_dump() for node in report.nodes],
+            edges=[edge.model_dump() for edge in report.edges],
+            objectives=report.objectives,
+            core_concepts=report.core_concepts,
+            methodologies=report.methodologies,
+            datasets=report.datasets,
+            metrics=report.metrics,
+            results=report.results,
+            contributions=report.contributions,
+            advantages=report.advantages,
+            future_directions=report.future_directions,
+            conflicting_findings=[c.model_dump() for c in report.conflicting_findings],
+            cross_paper_connections=[e.model_dump() for e in report.cross_paper_connections],
+            statistics=report.statistics,
+            partial=report.partial,
+            notice=report.notice,
         )
 
     except Exception as error:
@@ -1383,6 +1610,8 @@ def knowledge_dna(request: KnowledgeDNARequest):
     "/knowledge-mind-map",
     response_model=KnowledgeMindMapResponse,
 )
+@app.post("/mind-map", response_model=KnowledgeMindMapResponse, include_in_schema=False)
+@app.post("/mindmap", response_model=KnowledgeMindMapResponse, include_in_schema=False)
 def knowledge_mind_map(request: KnowledgeMindMapRequest):
     start_time = time.perf_counter()
 
@@ -1398,6 +1627,8 @@ def knowledge_mind_map(request: KnowledgeMindMapRequest):
             nodes=[node.model_dump() for node in report.nodes],
             edges=[edge.model_dump() for edge in report.edges],
             sources=report.sources,
+            partial=getattr(report, "partial", False),
+            notice=getattr(report, "notice", None),
         )
 
     except Exception as error:

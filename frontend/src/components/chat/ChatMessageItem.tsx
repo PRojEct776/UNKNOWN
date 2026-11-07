@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Dna,
   Waypoints,
+  Maximize2,
   Orbit,
   BookOpen,
   Info,
@@ -20,6 +21,7 @@ import type { ChatMessage } from '../../types/chat';
 import type { Source } from '../../types/evidence';
 import { ConfidenceBadge } from '../answers/ConfidenceBadge';
 import { ComparisonView, DebateView, GapView, VerificationView } from '../analysis/AnalysisViews';
+import { ResearchGapsExplorer } from '../analysis/ResearchGapsExplorer';
 import { ReasoningTimeline } from '../reasoning/ReasoningTimeline';
 import { KnowledgeMindMap } from '../visualization/KnowledgeMindMap';
 import { KnowledgeDNA } from '../visualization/KnowledgeDNA';
@@ -449,18 +451,27 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
           )}
 
           {/* Comparison matrix */}
-          {result?.comparison && result.comparison.length > 0 && (
+          {Boolean(result && ((result.comparison && result.comparison.length > 0) || result.comprehensiveComparison)) && result && (
             <div className="pt-2">
               <ComparisonView
                 rows={result.comparison}
                 entities={result.comparisonEntities}
+                comparisonData={result.comprehensiveComparison}
                 onOpenSources={() => onOpenSourcesDrawer(result.sources)}
               />
             </div>
           )}
 
           {/* Research Gaps view */}
-          {result?.researchGap && result.researchGap.title && (
+          {result?.researchGapsReport && result.researchGapsReport.gaps && (
+            <div className="pt-2">
+              <ResearchGapsExplorer
+                report={result.researchGapsReport}
+                onOpenSources={() => onOpenSourcesDrawer(result.sources)}
+              />
+            </div>
+          )}
+          {!result?.researchGapsReport && result?.researchGap && result.researchGap.title && (
             <div className="pt-2">
               <GapView gap={result.researchGap} onOpenSources={() => onOpenSourcesDrawer(result.sources)} />
             </div>
@@ -470,6 +481,62 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
           {result?.debate && result.debate.positions && result.debate.positions.length > 0 && (
             <div className="pt-2">
               <DebateView debate={result.debate} onOpenSources={() => onOpenSourcesDrawer(result.sources)} />
+            </div>
+          )}
+
+          {/* Interactive Knowledge Mind Map */}
+          {Boolean(result?.mindMap) && result && (
+            <div className="pt-2">
+              <div className="rounded-xl border border-white/8 bg-[#0b1219] p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Waypoints className="w-4 h-4 text-[#d2434e]" />
+                    <h3 className="text-xs font-mono uppercase text-white font-semibold">
+                      Knowledge Mind Map
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMindMapModal(true)}
+                    className="text-xs text-[#a7d0d2] hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span>Fullscreen</span>
+                  </button>
+                </div>
+
+                <div className="h-[480px] overflow-hidden rounded-lg bg-[#070b0f] border border-white/5">
+                  <KnowledgeMindMap root={result.mindMap} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Knowledge DNA Explorer Inline View */}
+          {result?.knowledgeDNA && (
+            <div className="pt-2">
+              <div className="p-3 rounded-xl bg-[#0d151e] border border-white/10 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    <Dna className="w-4 h-4 text-[#d2434e]" />
+                    <span className="text-xs font-semibold text-white tracking-wide">
+                      Knowledge DNA Explorer
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDnaModal(true)}
+                    className="text-xs text-[#a7d0d2] hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span>Fullscreen</span>
+                  </button>
+                </div>
+
+                <div className="min-h-[540px] overflow-hidden rounded-lg bg-[#070b0f] border border-white/5">
+                  <KnowledgeDNA data={result.knowledgeDNA} />
+                </div>
+              </div>
             </div>
           )}
 

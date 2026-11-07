@@ -34,6 +34,7 @@ class HealthPolicy:
     transient_cooldown_s: float = 30.0
     rate_limit_cooldown_s: float = 60.0
     fatal_cooldown_s: float = 300.0
+    quota_exhausted_cooldown_s: float = 1800.0
 
 
 @dataclass(slots=True)
@@ -127,7 +128,7 @@ class HealthTracker:
                 return  # prompt was oversized or malformed; not the provider's fault
 
             state.consecutive_failures += 1
-            cooldown = self._cooldown_for(kind, state.consecutive_failures)
+            cooldown = self._cooldown_for(kind, state.consecutive_failures, response.error)
             if cooldown > 0:
                 state.open_until = self._clock() + cooldown
 
@@ -139,7 +140,22 @@ class HealthTracker:
             else:
                 self._states.pop(name, None)
 
-    def _cooldown_for(self, kind: ErrorKind, consecutive_failures: int) -> float:
+    def _cooldown_for(
+        self,
+        kind: ErrorKind,
+        consecutive_failures: int,
+        error_text: str | None = None,
+    ) -> float:
+        if error_text:
+            lowered = error_text.lower()
+            if (
+                "per day" in lowered
+                or "daily" in lowered
+                or "requests per day" in lowered
+                or "generatecontentrequestsperday" in lowered
+                or ("resource_exhausted" in lowered and "per minute" not in lowered and "rpm" not in lowered)
+            ):
+                return self.policy.quota_exhausted_cooldown_s
         if kind is ErrorKind.FATAL:
             return self.policy.fatal_cooldown_s
         if kind is ErrorKind.RATE_LIMIT:

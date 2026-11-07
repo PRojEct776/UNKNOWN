@@ -345,10 +345,17 @@ class ResearchGapRequest(BaseModel):
 class ResearchGapResponse(BaseModel):
     query: str
     research_area: str
-    existing_findings: list[str]
-    reported_limitations: list[str]
-    gaps: list[dict]
-    sources: list[dict]
+    existing_findings: list[str] = Field(default_factory=list)
+    reported_limitations: list[str] = Field(default_factory=list)
+    gaps: list[dict] = Field(default_factory=list)
+    sources: list[dict] = Field(default_factory=list)
+    overview: dict[str, Any] = Field(default_factory=dict)
+    recommendations: list[dict] = Field(default_factory=list)
+    opportunity_map: dict[str, Any] = Field(default_factory=dict)
+    conflicts: list[dict] = Field(default_factory=list)
+    multi_doc_insights: dict[str, Any] = Field(default_factory=dict)
+    partial: bool = False
+    notice: str | None = None
 
 
 class DebateRequest(BaseModel):
@@ -397,6 +404,24 @@ class DebateResponse(BaseModel):
     final_verdict: str
     verdict_confidence: float
     sources: list[dict]
+    proposition: str = ""
+    opening_statements: dict = Field(default_factory=dict)
+    agreements: list[str] = Field(default_factory=list)
+    disagreements: list[str] = Field(default_factory=list)
+    unresolved_questions: list[str] = Field(default_factory=list)
+    neutral_assessment: str = ""
+    conclusion: str = ""
+    partial: bool = False
+    notice: str | None = None
+
+    def model_post_init(self, __context: Any) -> None:
+        super().model_post_init(__context)
+        if not self.proposition:
+            self.proposition = self.topic or self.query
+        if not self.conclusion:
+            self.conclusion = self.final_verdict or self.neutral_assessment
+        if not self.neutral_assessment and self.conclusion:
+            self.neutral_assessment = self.conclusion
 
 
 class KnowledgeDNARequest(BaseModel):
@@ -424,15 +449,33 @@ class KnowledgeDNARequest(BaseModel):
 class KnowledgeDNAResponse(BaseModel):
     query: str
     research_area: str
-    core_topics: list[str]
-    key_concepts: list[str]
-    methods: list[str]
-    findings: list[str]
-    limitations: list[str]
-    themes: list[str]
-    signals: list[dict]
-    relationships: list[dict]
-    sources: list[dict]
+    core_topics: list[str] = Field(default_factory=list)
+    key_concepts: list[str] = Field(default_factory=list)
+    methods: list[str] = Field(default_factory=list)
+    findings: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    themes: list[str] = Field(default_factory=list)
+    signals: list[dict] = Field(default_factory=list)
+    relationships: list[dict] = Field(default_factory=list)
+    sources: list[dict] = Field(default_factory=list)
+
+    # Rich Knowledge DNA Dimensions & Graph
+    nodes: list[dict] = Field(default_factory=list)
+    edges: list[dict] = Field(default_factory=list)
+    objectives: list[str] = Field(default_factory=list)
+    core_concepts: list[str] = Field(default_factory=list)
+    methodologies: list[str] = Field(default_factory=list)
+    datasets: list[str] = Field(default_factory=list)
+    metrics: list[str] = Field(default_factory=list)
+    results: list[str] = Field(default_factory=list)
+    contributions: list[str] = Field(default_factory=list)
+    advantages: list[str] = Field(default_factory=list)
+    future_directions: list[str] = Field(default_factory=list)
+    conflicting_findings: list[dict] = Field(default_factory=list)
+    cross_paper_connections: list[dict] = Field(default_factory=list)
+    statistics: dict[str, Any] = Field(default_factory=dict)
+    partial: bool = False
+    notice: str | None = None
 
 
 class KnowledgeMindMapRequest(BaseModel):
@@ -463,6 +506,8 @@ class KnowledgeMindMapResponse(BaseModel):
     nodes: list[dict]
     edges: list[dict]
     sources: list[dict]
+    partial: bool = False
+    notice: str | None = None
 
 
 class AdaptiveAnswerRequest(BaseModel):
@@ -539,12 +584,44 @@ class ComparisonAspectResponse(BaseModel):
     values: list[ComparisonValueResponse]
 
 
+class ContradictionItemResponse(BaseModel):
+    topic: str
+    claim_a: str = ""
+    document_a: str = ""
+    claim_b: str = ""
+    document_b: str = ""
+    explanation: str = ""
+    evidence_chunks: list[str] = Field(default_factory=list)
+
+
+class UniqueContributionResponse(BaseModel):
+    document: str
+    contribution: str
+    evidence: str = ""
+    chunk_id: str = ""
+
+
+class StrengthLimitationResponse(BaseModel):
+    document: str
+    strengths: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+
 class ResearchComparisonResponse(BaseModel):
     query: str
     entities: list[str]
     comparison: list[ComparisonAspectResponse]
     summary: str
     sources: list[dict]
+    similarities: list[str] = Field(default_factory=list)
+    differences: list[str] = Field(default_factory=list)
+    contradictions: list[ContradictionItemResponse] = Field(default_factory=list)
+    unique_contributions: list[UniqueContributionResponse] = Field(default_factory=list)
+    strengths_and_limitations: list[StrengthLimitationResponse] = Field(default_factory=list)
+    synthesis: str = ""
+    comparison_table: list[dict] | None = None
+    partial: bool = False
+    notice: str | None = None
 
 
 class ConceptDiscoveryRequest(BaseModel):

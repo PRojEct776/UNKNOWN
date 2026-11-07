@@ -105,10 +105,33 @@ class LLMOrchestrator:
     # ------------------------------------------------------
 
     @staticmethod
-    def _compact_prompt(prompt: str, max_chars: int = 10000) -> str:
-        """Compact prompt when payload size exceeds provider limits."""
+    def _compact_prompt(prompt: str, max_chars: int = 7000) -> str:
+        """Compact prompt when payload size exceeds provider limits, preserving structure and instructions."""
         if len(prompt) <= max_chars:
             return prompt
+
+        # If comparison prompt has an evidence catalog, compact evidence lines while preserving query & schema
+        for marker in ("DOCUMENT EVIDENCE CATALOG:", "DOCUMENT EVIDENCE:"):
+            if marker in prompt:
+                idx = prompt.find(marker)
+                prefix = prompt[: idx + len(marker)]
+                rest = prompt[idx + len(marker) :]
+                rule_marker = "STRICT RULES:"
+                if rule_marker in rest:
+                    ev_idx = rest.find(rule_marker)
+                    ev_part = rest[:ev_idx]
+                    suffix = rest[ev_idx:]
+                    ev_lines = ev_part.strip().splitlines()
+                    compacted_lines = []
+                    total_len = 0
+                    max_ev_len = max(800, max_chars - len(prefix) - len(suffix) - 150)
+                    for line in ev_lines:
+                        if total_len + len(line) < max_ev_len:
+                            compacted_lines.append(line)
+                            total_len += len(line)
+                    compacted_ev = "\n".join(compacted_lines) + "\n[...evidence catalog compacted for model token budget...]\n"
+                    return prefix + "\n" + compacted_ev + "\n" + suffix
+
         head = prompt[: int(max_chars * 0.6)]
         tail = prompt[-int(max_chars * 0.4) :]
         return head + "\n\n[...context compacted for model capacity...]\n\n" + tail
@@ -188,6 +211,8 @@ class LLMOrchestrator:
         self,
         prompt: str,
         system: str | None = None,
+        max_attempts: int | None = None,
+        time_budget_s: float | None = None,
     ) -> LLMResponse:
         """Generate structured JSON using provider-native support with fallback."""
         start = perf_counter()
@@ -199,19 +224,30 @@ class LLMOrchestrator:
                 ErrorKind.INVALID_REQUEST,
             )
 
-        deadline = monotonic() + self.total_timeout_s
+        effective_timeout = min(self.total_timeout_s, time_budget_s) if time_budget_s else self.total_timeout_s
+        deadline = monotonic() + effective_timeout
         failures: list[str] = []
         last_kind: ErrorKind | None = None
         current_prompt = prompt
+        attempts_count = 0
+
+        retried_providers: set[str] = set()
 
         for provider in self._candidates():
             if failures and monotonic() >= deadline:
                 logger.warning(
-                    "LLM structured-output time budget spent; "
-                    "not trying further providers."
+                    "LLM structured-output time budget spent (deadline exceeded); not trying further providers."
                 )
                 break
 
+            if max_attempts is not None and attempts_count >= max_attempts:
+                logger.warning(
+                    "Reached maximum provider attempt limit (%d); stopping structured fallback.",
+                    max_attempts,
+                )
+                break
+
+            attempts_count += 1
             response = provider.generate_structured(current_prompt, system)
             self.health.record(response)
 
@@ -226,12 +262,27 @@ class LLMOrchestrator:
 
             failures.append(f"{response.provider}: {response.error}")
             last_kind = response.error_kind
-            if response.error_kind == ErrorKind.PAYLOAD_TOO_LARGE:
-                current_prompt = self._compact_prompt(current_prompt)
+
+            # If payload exceeded provider limits, compact and retry at most once
+            # Never repeatedly retry the same provider after payload / TPM failure
+            if provider.provider_name not in retried_providers and (max_attempts is None or attempts_count < max_attempts):
+                if response.error_kind == ErrorKind.PAYLOAD_TOO_LARGE or (response.error and "token limit hit" in response.error):
+                    compacted = self._compact_prompt(current_prompt)
+                    if compacted != current_prompt:
+                        current_prompt = compacted
+                        retried_providers.add(provider.provider_name)
+                        logger.info("Retrying provider %s with compacted prompt...", provider.provider_name)
+                        attempts_count += 1
+                        retry_resp = provider.generate_structured(current_prompt, system)
+                        self.health.record(retry_resp)
+                        if retry_resp.success:
+                            return retry_resp
+                        failures.append(f"{provider.provider_name} (compacted retry): {retry_resp.error}")
+                        last_kind = retry_resp.error_kind
 
         return self._failure(
             start,
-            " | ".join(failures),
+            f"All configured LLM providers failed. Attempts: {'; '.join(failures)}",
             last_kind,
         )
 

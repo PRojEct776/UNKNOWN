@@ -131,18 +131,41 @@ class GeminiProvider(BaseProvider):
                     contents=prompt,
                     config=config,
                 )
+                candidates = getattr(response, "candidates", None) or []
+                if candidates:
+                    finish = _enum_name(getattr(candidates[0], "finish_reason", None))
+                    if finish in ("MAX_TOKENS", "LENGTH"):
+                        raise LLMError(
+                            ErrorKind.PAYLOAD_TOO_LARGE,
+                            f"Truncated Gemini response, finish_reason={finish} (token limit hit).",
+                        )
+
                 text = response.text
                 if text and text.strip():
                     return text
                 raise self._empty_error(response)
             except errors.APIError as exc:
                 state["exc"] = exc
-                if exc.code not in (500, 502, 503, 504, 429):
+                exc_msg = str(exc).lower()
+                is_daily_quota = (
+                    exc.code == 429
+                    and (
+                        "per day" in exc_msg
+                        or "daily" in exc_msg
+                        or "requests per day" in exc_msg
+                        or "generatecontentrequestsperday" in exc_msg
+                        or "quota exceeded" in exc_msg
+                        or "resource_exhausted" in exc_msg
+                        or "free_tier" in exc_msg
+                    )
+                )
+                if exc.code not in (500, 502, 503, 504, 429) or is_daily_quota:
                     state["fatal"] = True
                 logger.warning(
-                    "Gemini API error (%s) on model %s; single attempt, no retry.",
+                    "Gemini API error (%s) on model %s; fatal=%s.",
                     exc.code,
                     model_name,
+                    state["fatal"],
                 )
                 raise
             except Exception as exc:
@@ -205,6 +228,12 @@ class GeminiProvider(BaseProvider):
         if finish in _BLOCKED_FINISH:
             return LLMError(ErrorKind.INVALID_REQUEST, f"Response blocked ({finish}).")
 
+        if finish in ("MAX_TOKENS", "LENGTH"):
+            return LLMError(
+                ErrorKind.PAYLOAD_TOO_LARGE,
+                f"Truncated Gemini response, finish_reason={finish} (token limit hit).",
+            )
+
         hint = (
             " (token limit hit; thinking shares the budget - raise "
             "MAX_OUTPUT_TOKENS or lower GEMINI_THINKING_LEVEL)"
@@ -247,12 +276,25 @@ class GeminiProvider(BaseProvider):
     def _classify(self, exc: Exception) -> ErrorKind:
         if isinstance(exc, errors.APIError):
             code = exc.code  # type: ignore
-            # Gemini reports a bad API key as 400 INVALID_ARGUMENT.
             text = str(exc)
+            text_lower = text.lower()
             if code == 400 and (
-                "API_KEY_INVALID" in text or "API key not valid" in text
+                "api_key_invalid" in text_lower or "api key not valid" in text_lower
             ):
                 return ErrorKind.FATAL
+            if code == 429:
+                # Distinguish daily quota exhaustion from temporary per-minute rate limits
+                if (
+                    "per day" in text_lower
+                    or "daily" in text_lower
+                    or "requests per day" in text_lower
+                    or "generatecontentrequestsperday" in text_lower
+                    or "free_tier" in text_lower
+                    or "quota exceeded" in text_lower
+                    or "resource_exhausted" in text_lower
+                ):
+                    return ErrorKind.FATAL
+                return ErrorKind.RATE_LIMIT
             if isinstance(code, int):
                 return kind_from_http_status(code)
             return ErrorKind.UNKNOWN

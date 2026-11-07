@@ -138,15 +138,55 @@ export function exportResultToMarkdown(result: WorkspaceResult, researcherName: 
     lines.push(``);
   }
 
-  if (result.request.mode === 'gaps' && result.researchGap) {
-    lines.push(
-      `## Research Gaps & Literature Boundaries`,
-      ``,
-      `**Current Knowledge:** ${result.researchGap.currentKnowledge}`,
-      `**Identified Limitation:** ${result.researchGap.missingConnection}`,
-      `**Potential Research Direction:** ${result.researchGap.potentialGap}`,
-      ``,
-    );
+  if (result.request.mode === 'gaps') {
+    if (result.researchGapsReport) {
+      const rep = result.researchGapsReport;
+      lines.push(
+        `## Evidence-Based Research Gaps Discovery Report`,
+        ``,
+        `**Research Domain:** ${rep.researchArea}`,
+        `- Total Gaps: ${rep.overview.totalGaps} (High: ${rep.overview.highPriorityGaps}, Medium: ${rep.overview.mediumPriorityGaps}, Low: ${rep.overview.lowPriorityGaps})`,
+        `- Gap Nature: ${rep.overview.explicitGaps} explicit, ${rep.overview.derivedGaps} derived`,
+        `- Supporting Documents: ${rep.overview.supportingPapersCount}`,
+        ``,
+        `### Identified Gaps`,
+      );
+      rep.gaps.forEach((g, idx) => {
+        lines.push(
+          `#### ${idx + 1}. [${g.priority} PRIORITY] [${g.category}] ${g.title}`,
+          `- **Type:** ${g.type} (${(Number(g.confidence || 0) * 100).toFixed(0)}% confidence)`,
+          `- **Priority Rationale:** ${g.priorityReasoning}`,
+          `- **Unresolved:** ${g.missingUnresolved}`,
+          `- **Why It Matters:** ${g.whyItMatters}`,
+          `- **Direction:** ${g.potentialDirection}`,
+          `- **Citation:** ${g.supportingPapers.join(', ') || g.document} (p. ${g.page || 'N/A'})`,
+          `- **Evidence:** "${g.limitationEvidence}"`,
+          ``,
+        );
+      });
+      if (rep.recommendations && rep.recommendations.length > 0) {
+        lines.push(`### Concrete Future Research Proposals (Hypotheses for Investigation)`);
+        rep.recommendations.forEach((r, idx) => {
+          lines.push(
+            `#### Proposal ${idx + 1}: ${r.title}`,
+            `- **Research Question:** ${r.researchQuestion}`,
+            `- **Problem:** ${r.problemToInvestigate}`,
+            `- **Suggested Approach:** ${r.suggestedApproach}`,
+            `- **Expected Contribution:** ${r.expectedContribution}`,
+            ``,
+          );
+        });
+      }
+    } else if (result.researchGap) {
+      lines.push(
+        `## Research Gaps & Literature Boundaries`,
+        ``,
+        `**Current Knowledge:** ${result.researchGap.currentKnowledge}`,
+        `**Identified Limitation:** ${result.researchGap.missingConnection}`,
+        `**Potential Research Direction:** ${result.researchGap.potentialGap}`,
+        ``,
+      );
+    }
   }
 
   if (result.request.mode === 'debate' && result.debate) {
