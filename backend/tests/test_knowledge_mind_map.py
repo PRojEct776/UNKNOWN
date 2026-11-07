@@ -564,8 +564,17 @@ def test_frontend_mindmap_ui_contract_and_interactions():
     """Verify frontend mindmap component exposes all required interaction testids."""
     from pathlib import Path
 
-    kmm_path = Path("frontend/src/components/visualization/KnowledgeMindMap.tsx")
-    assert kmm_path.exists()
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    kmm_path = repo_root / "frontend" / "src" / "components" / "visualization" / "KnowledgeMindMap.tsx"
+    if not kmm_path.exists():
+        for cand in [
+            Path("frontend/src/components/visualization/KnowledgeMindMap.tsx"),
+            Path("../frontend/src/components/visualization/KnowledgeMindMap.tsx"),
+        ]:
+            if cand.exists():
+                kmm_path = cand
+                break
+    assert kmm_path.exists(), f"KnowledgeMindMap.tsx not found at {kmm_path}"
     content = kmm_path.read_text(encoding="utf-8")
 
     assert 'data-testid="mindmap-container"' in content

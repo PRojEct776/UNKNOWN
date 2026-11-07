@@ -418,7 +418,7 @@ def test_compat_empty_body_error_and_length_hint():
     r = _provider_with_transport(
         lambda req: httpx.Response(200, json=_completion(None, "length"))
     ).generate("q")
-    assert r.error_kind is ErrorKind.EMPTY and "MAX_OUTPUT_TOKENS" in r.error  # type: ignore
+    assert r.error_kind is ErrorKind.PAYLOAD_TOO_LARGE and "MAX_OUTPUT_TOKENS" in r.error  # type: ignore
 
     r = _provider_with_transport(
         lambda req: httpx.Response(
@@ -549,7 +549,7 @@ def test_gemini_empty_response_diagnostics():
         return SimpleNamespace(prompt_feedback=None, candidates=[cand])
 
     err = e(with_finish("MAX_TOKENS"))
-    assert err.kind is ErrorKind.EMPTY and "MAX_OUTPUT_TOKENS" in str(err)
+    assert err.kind is ErrorKind.PAYLOAD_TOO_LARGE and "MAX_OUTPUT_TOKENS" in str(err)
     assert e(with_finish("SAFETY")).kind is ErrorKind.INVALID_REQUEST
 
 

@@ -582,7 +582,14 @@ def test_openrouter_finish_reason_length_and_fallback():
         }],
     }
 
-    p_openrouter = OpenRouterProvider()
+    with patch("app.llm.openrouter_provider.settings") as mock_settings:
+        mock_settings.OPENROUTER_MODEL = "openrouter-model"
+        mock_settings.OPENROUTER_API_KEY = "mock-key"
+        mock_settings.LLM_TIMEOUT_S = 10.0
+        mock_settings.TEMPERATURE = 0.0
+        mock_settings.MAX_OUTPUT_TOKENS = 1000
+        p_openrouter = OpenRouterProvider()
+
     p_openrouter.client = openai.OpenAI(
         api_key="mock",
         base_url="http://mock-or/v1",

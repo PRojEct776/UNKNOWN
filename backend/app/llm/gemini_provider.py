@@ -231,7 +231,7 @@ class GeminiProvider(BaseProvider):
         if finish in ("MAX_TOKENS", "LENGTH"):
             return LLMError(
                 ErrorKind.PAYLOAD_TOO_LARGE,
-                f"Truncated Gemini response, finish_reason={finish} (token limit hit).",
+                f"Truncated Gemini response, finish_reason={finish} (token limit hit; thinking shares the budget - raise MAX_OUTPUT_TOKENS or lower GEMINI_THINKING_LEVEL).",
             )
 
         hint = (
@@ -290,8 +290,6 @@ class GeminiProvider(BaseProvider):
                     or "requests per day" in text_lower
                     or "generatecontentrequestsperday" in text_lower
                     or "free_tier" in text_lower
-                    or "quota exceeded" in text_lower
-                    or "resource_exhausted" in text_lower
                 ):
                     return ErrorKind.FATAL
                 return ErrorKind.RATE_LIMIT

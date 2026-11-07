@@ -106,7 +106,7 @@ class OpenAICompatProvider(BaseProvider):
         finish = getattr(choice, "finish_reason", None)
 
         if finish == "length":
-            hint = " (token limit hit; output truncated)"
+            hint = " (token limit hit; output truncated; raise MAX_OUTPUT_TOKENS)"
             raise LLMError(
                 ErrorKind.PAYLOAD_TOO_LARGE,
                 f"Truncated response because finish_reason=length{hint}.",
